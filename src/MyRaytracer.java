@@ -41,7 +41,7 @@ public class MyRaytracer {
         ArrayList<SceneObject> objects = getUnion();
 
         ArrayList<Light> lights = new ArrayList<>();
-        lights.add(new lighting.Light(new Vec3(2, 3, 3), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
+        lights.add(new lighting.Light(new Vec3(0, 0, 3), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
 
         Vec3 pxStart = camera.getPxStart();
         Vec3 pxRightStep = camera.getPxRightStep(resX);
@@ -170,11 +170,11 @@ public class MyRaytracer {
         Quadrik q1 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(1, 0, 0), 0, 0)).transform(transform1);
         Mat4 transform2 = new Mat4().translate(-0.5f, 0, -3);
         Quadrik q2 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(1, 0, 0), 0, 0)).transform(transform2);
-        Mat4 transform3 = new Mat4().translate(0, 0.5f, -3);
+        Mat4 transform3 = new Mat4().translate(0, 0, -3.5f);
         Quadrik q3 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(1, 0, 0), 0, 0)).transform(transform3);
 
         IntersectionObject i = new IntersectionObject(q1, q2, q1.getMaterial());
-        IntersectionObject i2 = new IntersectionObject(i, q3, q1.getMaterial());
+        DifferenceObject i2 = new DifferenceObject(q3, i, q1.getMaterial());
 
         objects.add(i2);
         return objects;
