@@ -1,9 +1,10 @@
-package geometry.objects;
+package math.geometry.objects;
 
-import geometry.*;
+import math.*;
+import math.geometry.*;
 import stuff.*;
 
-import java.util.List;
+import java.util.*;
 
 public abstract class SceneObject {
 

@@ -1,14 +1,13 @@
-package geometry.objects;
+package math.geometry.objects.csg;
 
-import geometry.Intersection;
-import geometry.Ray;
-import geometry.Vec3;
-import stuff.Material;
+import math.*;
+import math.geometry.*;
+import math.geometry.objects.*;
+import stuff.*;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
-public class UnionObject extends SceneObject{
+public class UnionObject extends SceneObject {
 
     private SceneObject object1;
     private SceneObject object2;

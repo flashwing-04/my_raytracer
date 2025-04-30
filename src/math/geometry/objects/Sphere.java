@@ -1,10 +1,10 @@
-package geometry.objects;
+package math.geometry.objects;
 
-import geometry.*;
+import math.*;
+import math.geometry.*;
 import stuff.*;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class Sphere extends SceneObject {
 
@@ -31,8 +31,9 @@ public class Sphere extends SceneObject {
 
         if(discriminant > 0) {
             float sqrtDiscriminant = (float) Math.sqrt(discriminant);
-            float s1 = (-b - sqrtDiscriminant) / (2.0f * a);
-            float s2 = (-b + sqrtDiscriminant) / (2.0f * a);
+            float k = (b < 0) ? (-b - sqrtDiscriminant) / 2f : (-b + sqrtDiscriminant) / 2f;
+            float s1 = k / a;
+            float s2 = c / k;
 
             Vec3 point1 = ray.getPoint(s1);
             Vec3 point2 = ray.getPoint(s2);

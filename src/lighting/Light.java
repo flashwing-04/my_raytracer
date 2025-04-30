@@ -1,6 +1,6 @@
 package lighting;
 
-import geometry.*;
+import math.*;
 import stuff.*;
 
 public class Light {

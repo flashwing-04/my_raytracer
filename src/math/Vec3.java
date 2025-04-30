@@ -1,4 +1,4 @@
-package geometry;
+package math;
 
 public class Vec3 {
 

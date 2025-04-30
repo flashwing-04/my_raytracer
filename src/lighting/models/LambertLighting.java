@@ -2,8 +2,9 @@ package lighting.models;
 
 import java.util.ArrayList;
 
-import geometry.objects.*;
-import geometry.*;
+import math.*;
+import math.geometry.objects.*;
+import math.geometry.*;
 import lighting.*;
 
 public class LambertLighting extends LightingModel {

@@ -1,4 +1,6 @@
-package geometry;
+package math.geometry;
+
+import math.*;
 
 public class Ray {
 

@@ -1,12 +1,12 @@
-package geometry.objects;
+package math.geometry.objects;
 
-import geometry.*;
+import math.*;
+import math.geometry.*;
 import stuff.*;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
-public class Quadrik extends SceneObject{
+public class Quadrik extends SceneObject {
 
     float[] coefficients;
 
@@ -55,8 +55,9 @@ public class Quadrik extends SceneObject{
 
         if (discriminant > 0) {
             float sqrtDiscriminant = (float) Math.sqrt(discriminant);
-            float s1 = (-B - sqrtDiscriminant) / (2.0f * A);
-            float s2 = (-B + sqrtDiscriminant) / (2.0f * A);
+            float k = (B < 0) ? (-B - sqrtDiscriminant) / 2f : (-B + sqrtDiscriminant) / 2f;
+            float s1 = k / A;
+            float s2 = C / k;
 
             Vec3 point1 = ray.getPoint(s1);
             Vec3 point2 = ray.getPoint(s2);

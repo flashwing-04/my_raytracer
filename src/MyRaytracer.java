@@ -9,8 +9,10 @@ import javax.swing.ImageIcon;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 
-import geometry.*;
-import geometry.objects.*;
+import math.*;
+import math.geometry.*;
+import math.geometry.objects.*;
+import math.geometry.objects.csg.*;
 import scene.*;
 import stuff.*;
 import lighting.*;

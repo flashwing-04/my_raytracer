@@ -1,6 +1,7 @@
-package geometry;
+package math.geometry;
 
-import geometry.objects.SceneObject;
+import math.*;
+import math.geometry.objects.*;
 
 public class Intersection implements Comparable<Intersection>{
     private Vec3 point;
