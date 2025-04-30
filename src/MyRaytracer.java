@@ -3,7 +3,6 @@ import java.awt.Toolkit;
 import java.awt.image.DirectColorModel;
 import java.awt.image.MemoryImageSource;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 import javax.swing.ImageIcon;
@@ -33,13 +32,16 @@ public class MyRaytracer {
         Vec3 imgPlaneR = new Vec3(1, 0, 0);
         Camera camera = new Camera(cameraPos,cameraV, imgPlaneR, 2, 2, 1);
 
-        ArrayList<SceneObject> objects = getObjects1();
-        ArrayList<Light> lights = getLights1();
+        //ArrayList<SceneObject> objects = getObjects1();
+        //ArrayList<Light> lights = getLights1();
 
         //ArrayList<SceneObject> objects = getObjects2();
         //ArrayList<Light> lights = getLights2();
 
-        //ArrayList<SceneObject> objects = getQuadrik();
+        ArrayList<SceneObject> objects = getUnion();
+
+        ArrayList<Light> lights = new ArrayList<>();
+        lights.add(new lighting.Light(new Vec3(2, 3, 3), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
 
         Vec3 pxStart = camera.getPxStart();
         Vec3 pxRightStep = camera.getPxRightStep(resX);
@@ -164,9 +166,17 @@ public class MyRaytracer {
 
     public static ArrayList<SceneObject> getUnion() {
         ArrayList<SceneObject> objects = new ArrayList<>();
-        Mat4 transform = new Mat4().translate(0, 0, -3);
-        Quadrik q = new Quadrik(new float[] {1, 1, 1, 0, 1, 0, 1, 1, 0, -1},new Material(new Color(1, 0, 0), 0, 0)).transform(transform);
-        objects.add(q);
+        Mat4 transform1 = new Mat4().translate(0.5f, 0, -3);
+        Quadrik q1 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(1, 0, 0), 0, 0)).transform(transform1);
+        Mat4 transform2 = new Mat4().translate(-0.5f, 0, -3);
+        Quadrik q2 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(1, 0, 0), 0, 0)).transform(transform2);
+        Mat4 transform3 = new Mat4().translate(0, 0.5f, -3);
+        Quadrik q3 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(1, 0, 0), 0, 0)).transform(transform3);
+
+        IntersectionObject i = new IntersectionObject(q1, q2, q1.getMaterial());
+        IntersectionObject i2 = new IntersectionObject(i, q3, q1.getMaterial());
+
+        objects.add(i2);
         return objects;
     }
 }

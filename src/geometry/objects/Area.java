@@ -25,7 +25,7 @@ public class Area extends SceneObject{
             float s = (d-dot)/dot;
             Vec3 point = ray.getPoint(s);
 
-            intersections.add(new Intersection(point, s, this));
+            intersections.add(new Intersection(point, normal, s, this));
         }
 
         return intersections;

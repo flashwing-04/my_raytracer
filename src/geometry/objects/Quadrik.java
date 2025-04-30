@@ -61,8 +61,11 @@ public class Quadrik extends SceneObject{
             Vec3 point1 = ray.getPoint(s1);
             Vec3 point2 = ray.getPoint(s2);
 
-            intersections.add(new Intersection(point1, s1, this));
-            intersections.add(new Intersection(point2, s2, this));
+            Vec3 normal1 = getNormal(point1);
+            Vec3 normal2 = getNormal(point2);
+
+            intersections.add(new Intersection(point1, normal1, s1,this));
+            intersections.add(new Intersection(point2, normal2, s2,this));
         }
 
         return intersections;
