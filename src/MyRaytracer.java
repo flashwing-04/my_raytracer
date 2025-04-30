@@ -3,6 +3,8 @@ import java.awt.Toolkit;
 import java.awt.image.DirectColorModel;
 import java.awt.image.MemoryImageSource;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
@@ -37,6 +39,8 @@ public class MyRaytracer {
         //ArrayList<SceneObject> objects = getObjects2();
         //ArrayList<Light> lights = getLights2();
 
+        //ArrayList<SceneObject> objects = getQuadrik();
+
         Vec3 pxStart = camera.getPxStart();
         Vec3 pxRightStep = camera.getPxRightStep(resX);
         Vec3 pxUpStep = camera.getPxUpStep(resY);
@@ -48,18 +52,25 @@ public class MyRaytracer {
                 Ray ray = new Ray(camera.getPosition(),  pixelPos.subtract(camera.getPosition()));
 
                 SceneObject nearestObject = null;
+                Intersection nearestIntersection = null;
                 float nearestDistance = Float.MAX_VALUE;
 
                 for(SceneObject object : objects) {
-                   Intersection sp = new Intersection(object, ray);
-                   float s = sp.getS();
-                   if (s > 0 && s < nearestDistance) {
-                       nearestObject = object;
-                       nearestDistance = s;
+                   List<Intersection> intersections = object.intersect(ray);
+
+                   if(!intersections.isEmpty()) {
+                       for (Intersection intersection : intersections) {
+                           float s = intersection.getDistance();
+                           if (s > 0 && s < nearestDistance) {
+                               nearestObject = object;
+                               nearestDistance = s;
+                               nearestIntersection = intersection;
+                           }
+                       }
                    }
                 }
                 if(nearestObject != null) {
-                    pixels[y * resX + x] = new LambertLighting(lights, nearestObject, new Intersection(nearestObject, ray)).computeFinalColor();
+                    pixels[y * resX + x] = new LambertLighting(lights, nearestObject, nearestIntersection).computeFinalColor();
                 }
             }
         }
@@ -143,8 +154,19 @@ public class MyRaytracer {
         return lights;
     }
 
-    public static Quadrik getQuadrik() {
-        Mat4 transform = new Mat4().scale(0.5f).translate(0, 10, -20);
-        return new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(0.7f, 0.3f, 0.9f), 0, 0)).transform(transform);
+    public static ArrayList<SceneObject> getQuadrik() {
+        ArrayList<SceneObject> objects = new ArrayList<>();
+        Mat4 transform = new Mat4().translate(0, 0, -3);
+        Quadrik q = new Quadrik(new float[] {1, 1, 1, 0, 1, 0, 1, 1, 0, -1},new Material(new Color(1, 0, 0), 0, 0)).transform(transform);
+        objects.add(q);
+        return objects;
+    }
+
+    public static ArrayList<SceneObject> getUnion() {
+        ArrayList<SceneObject> objects = new ArrayList<>();
+        Mat4 transform = new Mat4().translate(0, 0, -3);
+        Quadrik q = new Quadrik(new float[] {1, 1, 1, 0, 1, 0, 1, 1, 0, -1},new Material(new Color(1, 0, 0), 0, 0)).transform(transform);
+        objects.add(q);
+        return objects;
     }
 }

@@ -14,7 +14,7 @@ public class LambertLighting extends LightingModel {
 
     public Vec3 computeLight() {
         Vec3 lighting = new Vec3(0, 0, 0);
-        Vec3 point = sp.getSp();
+        Vec3 point = sp.getPoint();
         Vec3 normal = object.getNormal(point);
 
         for( Light light : lights) {

@@ -3,6 +3,9 @@ package geometry.objects;
 import geometry.*;
 import stuff.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class Area extends SceneObject{
 
     private Vec3 normal;
@@ -14,13 +17,18 @@ public class Area extends SceneObject{
         this.d = d;
     }
 
-    public float computeIntersectionS(Ray ray) {
+    public List<Intersection> intersect(Ray ray) {
+        List<Intersection> intersections = new ArrayList<>();
+
         float dot = normal.dot(ray.getV());
-        if(dot == 0) { return -1; }
+        if(dot != 0) {
+            float s = (d-dot)/dot;
+            Vec3 point = ray.getPoint(s);
 
-        float s = (d-dot)/dot;
+            intersections.add(new Intersection(point, s, this));
+        }
 
-        return s;
+        return intersections;
     }
 
     public Vec3 getNormal(Vec3 p) {

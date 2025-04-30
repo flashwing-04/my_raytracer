@@ -10,6 +10,10 @@ public class Ray {
         this.v = v.normalize();
     }
 
+    public Vec3 getPoint(float s) {
+        return p.add(v.multiply(s));
+    }
+
     public Vec3 getP() {
         return p;
     }
