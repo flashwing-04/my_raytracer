@@ -1,6 +1,6 @@
 package stuff;
 
-import geometry.Vec3;
+import math.*;
 
 public class Color {
 

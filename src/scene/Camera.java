@@ -1,6 +1,6 @@
 package scene;
 
-import geometry.*;
+import math.*;
 
 public class Camera {
 

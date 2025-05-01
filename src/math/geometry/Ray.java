@@ -1,4 +1,6 @@
-package geometry;
+package math.geometry;
+
+import math.*;
 
 public class Ray {
 
@@ -8,6 +10,10 @@ public class Ray {
     public Ray(Vec3 p, Vec3 v) {
         this.p = p;
         this.v = v.normalize();
+    }
+
+    public Vec3 getPoint(float s) {
+        return p.add(v.multiply(s));
     }
 
     public Vec3 getP() {

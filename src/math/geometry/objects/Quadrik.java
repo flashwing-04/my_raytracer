@@ -1,9 +1,12 @@
-package geometry.objects;
+package math.geometry.objects;
 
-import geometry.*;
+import math.*;
+import math.geometry.*;
 import stuff.*;
 
-public class Quadrik extends SceneObject{
+import java.util.*;
+
+public class Quadrik extends SceneObject {
 
     float[] coefficients;
 
@@ -23,7 +26,9 @@ public class Quadrik extends SceneObject{
         };
     }
 
-    public float computeIntersectionS(Ray ray) {
+    public List<Intersection> intersect(Ray ray) {
+        List<Intersection> intersections = new ArrayList<Intersection>();
+
         Vec3 rayOrigin = ray.getP();
         Vec3 rayDirection = ray.getV();
 
@@ -36,10 +41,10 @@ public class Quadrik extends SceneObject{
 
         float B = 2 * (
                 a * px * vx + b * py * vy + c * pz * vz
-                + d * (px * vy + py * vx)
-                + e * (px * vz + pz * vx)
-                + f * (py * vz + pz * py)
-                + g * vx + h * vy + i * vz
+                        + d * (px * vy + py * vx)
+                        + e * (px * vz + pz * vx)
+                        + f * (py * vz + pz * vy)
+                        + g * vx + h * vy + i * vz
         );
 
         float C = a * px * px + b * py * py + c * pz * pz
@@ -48,16 +53,23 @@ public class Quadrik extends SceneObject{
 
         float discriminant = B * B - 4 * A * C;
 
-        if (discriminant < 0) {
-            return -1;
+        if (discriminant > 0) {
+            float sqrtDiscriminant = (float) Math.sqrt(discriminant);
+            float k = (B < 0) ? (-B - sqrtDiscriminant) / 2f : (-B + sqrtDiscriminant) / 2f;
+            float s1 = k / A;
+            float s2 = C / k;
+
+            Vec3 point1 = ray.getPoint(s1);
+            Vec3 point2 = ray.getPoint(s2);
+
+            Vec3 normal1 = getNormal(point1);
+            Vec3 normal2 = getNormal(point2);
+
+            intersections.add(new Intersection(point1, normal1, s1,this));
+            intersections.add(new Intersection(point2, normal2, s2,this));
         }
 
-        float sqrtDisc = (float) Math.sqrt(discriminant);
-        float k = (-b - (Math.signum(b) * sqrtDisc)) / 2.0f;
-        float s1 = C/k;
-        float s2 = k/A;
-
-        return Math.min(s1, s2);
+        return intersections;
     }
 
     public Vec3 getNormal(Vec3 p) {

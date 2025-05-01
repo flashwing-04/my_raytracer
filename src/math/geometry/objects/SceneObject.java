@@ -1,7 +1,10 @@
-package geometry.objects;
+package math.geometry.objects;
 
-import geometry.*;
+import math.*;
+import math.geometry.*;
 import stuff.*;
+
+import java.util.*;
 
 public abstract class SceneObject {
 
@@ -15,7 +18,7 @@ public abstract class SceneObject {
         return material;
     }
 
-    public abstract float computeIntersectionS(Ray ray);
+    public abstract List<Intersection> intersect(Ray ray);
 
     public abstract Vec3 getNormal(Vec3 p);
 
