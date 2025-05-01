@@ -11,7 +11,7 @@ public class Intersection implements Comparable<Intersection>{
 
     public Intersection(Vec3 point, Vec3 normal, float distance, SceneObject object) {
         this.point = point;
-        this.normal = normal;
+        this.normal = normal.normalize();
         this.distance = distance;
         this.object = object;
     }

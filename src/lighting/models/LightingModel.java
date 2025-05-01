@@ -12,25 +12,17 @@ public abstract class LightingModel {
 
     ArrayList<Light> lights;
     SceneObject object;
-    Intersection sp;
+    Intersection intersection;
 
-    public LightingModel(ArrayList<Light> lights, SceneObject object, Intersection sp) {
+    public LightingModel(ArrayList<Light> lights, SceneObject object, Intersection intersection) {
         this.lights = lights;
         this.object = object;
-        this.sp = sp;
+        this.intersection = intersection;
     }
 
     protected abstract Vec3 computeLight();
 
-    public int computeFinalColor() {
-        Vec3 lighting = computeLight();
-
-        float red = lighting.getX() * object.getMaterial().getAlbedo().getR();
-        float green = lighting.getY() * object.getMaterial().getAlbedo().getG();
-        float blue = lighting.getZ() * object.getMaterial().getAlbedo().getB();
-
-        return new Color(red, green, blue).toHex();
-    }
+    public int getFinalColor() { return new Color(computeLight()).toHex(); }
 
     public ArrayList<Light> getLights() {
         return lights;
@@ -40,8 +32,8 @@ public abstract class LightingModel {
         return object;
     }
 
-    public Intersection getSp() {
-        return sp;
+    public Intersection getIntersection() {
+        return intersection;
     }
 }
 
