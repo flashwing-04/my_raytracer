@@ -27,6 +27,15 @@ public class Sphere extends SceneObject {
         float b = 2 * (rayOrigin.dot(rayDirection) + (-1 * (rayDirection.dot(center))));
         float c = rayOrigin.dot(rayOrigin) + center.dot(center) - 2 *(center.dot(rayOrigin)) - (radius * radius);
 
+        if (a == 0){
+            if(b != 0) {
+                Vec3 point = ray.getPoint(-c / b);
+                Vec3 normal = getNormal(point);
+                intersections.add(new Intersection(point, normal, -c / b, this));
+                return intersections;
+            }
+        }
+
         float discriminant = b * b - 4 * a * c;
 
         if(discriminant > 0) {

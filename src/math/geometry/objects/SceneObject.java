@@ -14,6 +14,8 @@ public abstract class SceneObject {
         this.material = material;
     }
 
+    public SceneObject() { this.material = null; }
+
     public Material getMaterial() {
         return material;
     }
