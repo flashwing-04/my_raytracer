@@ -51,6 +51,16 @@ public class Quadrik extends SceneObject {
                 + 2 * (d * px * py + e * px * pz + f * py * pz
                 + g * px + h * py + i * pz) + j;
 
+        if (A == 0) {
+            if (B != 0) {
+                float t = -C / B;
+                Vec3 point = ray.getPoint(t);
+                Vec3 normal = getNormal(point);
+                intersections.add(new Intersection(point, normal, t, this));
+                return intersections;
+            }
+        }
+
         float discriminant = B * B - 4 * A * C;
 
         if (discriminant > 0) {

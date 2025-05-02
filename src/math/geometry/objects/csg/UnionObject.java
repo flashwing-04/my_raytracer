@@ -9,25 +9,53 @@ import java.util.*;
 
 public class UnionObject extends SceneObject {
 
-    private SceneObject object1;
-    private SceneObject object2;
+    private SceneObject objA;
+    private SceneObject objB;
 
-    public UnionObject(SceneObject object1, SceneObject object2, Material material) {
+    public UnionObject(SceneObject objA, SceneObject objB, Material material) {
         super(material);
-        this.object1 = object1;
-        this.object2 = object2;
+        this.objA = objA;
+        this.objB = objB;
     }
 
     public List<Intersection> intersect(Ray ray) {
-        List<Intersection> intersections = new ArrayList<>();
+        List<Intersection> intersectionsA = objA.intersect(ray);
+        List<Intersection> intersectionsB = objB.intersect(ray);
 
-        List<Intersection> intersections1 = object1.intersect(ray);
-        List<Intersection> intersections2 = object2.intersect(ray);
+        List<Intersection> combined = new ArrayList<>();
+        combined.addAll(intersectionsA);
+        combined.addAll(intersectionsB);
 
-        intersections.addAll(intersections1);
-        intersections.addAll(intersections2);
+        combined.sort(Comparator.comparingDouble(Intersection::getDistance));
 
-        return intersections;
+        return filterUnionIntervals(combined);
+    }
+
+    private List<Intersection> filterUnionIntervals(List<Intersection> intersections) {
+        List<Intersection> result = new ArrayList<>();
+
+        boolean insideA = false;
+        boolean insideB = false;
+        boolean wasInside = false;
+
+        for (Intersection inter : intersections) {
+            SceneObject obj = inter.getObject();
+            if (obj == objA) insideA = !insideA;
+            else if (obj == objB) insideB = !insideB;
+
+            boolean isInside = insideA || insideB;
+            if (isInside != wasInside) {
+                result.add(new Intersection(
+                        inter.getPoint(),
+                        inter.getNormal(),
+                        inter.getDistance(),
+                        this
+                ));
+            }
+            wasInside = isInside;
+        }
+
+        return result;
     }
 
     public Vec3 getNormal(Vec3 p) {

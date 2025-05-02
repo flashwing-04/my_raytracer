@@ -12,6 +12,12 @@ public class Vec3 {
         this.z = z;
     }
 
+    public Vec3(float a) {
+        this.x = a;
+        this.y = a;
+        this.z = a;
+    }
+
     public Vec3 subtract(Vec3 v) {
         return new Vec3(x-v.getX(),y-v.getY(),z-v.getZ());
     }
@@ -22,6 +28,26 @@ public class Vec3 {
 
     public Vec3 multiply(float a) {
         return new Vec3(x*a,y*a,z*a);
+    }
+
+    public Vec3 multiply(Vec3 other) {
+        return new Vec3(
+                this.x * other.x,
+                this.y * other.y,
+                this.z * other.z
+        );
+    }
+
+    public Vec3 divide(float a) {
+        return new Vec3(x/a,y/a,z/a);
+    }
+
+    public Vec3 divide(Vec3 other) {
+        return new Vec3(
+                this.x/ other.x,
+                this.y/ other.y,
+                this.z/ other.z
+        );
     }
 
     public Vec3 normalize(){

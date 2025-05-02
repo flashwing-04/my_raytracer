@@ -9,14 +9,14 @@ import lighting.*;
 
 public class LambertLighting extends LightingModel {
 
-    public LambertLighting(ArrayList<Light> lights, SceneObject object, Intersection sp) {
-        super(lights, object, sp);
+    public LambertLighting(ArrayList<Light> lights, SceneObject object, Intersection intersection) {
+        super(lights, object, intersection);
     }
 
     public Vec3 computeLight() {
-        Vec3 lighting = new Vec3(0, 0, 0);
-        Vec3 point = sp.getPoint();
-        Vec3 normal = sp.getNormal();
+        Vec3 lighting = new Vec3(0);
+        Vec3 point = intersection.getPoint();
+        Vec3 normal = intersection.getNormal();
 
         for( Light light : lights) {
             Vec3 lightDir = (light.getP().subtract(point)).normalize();
@@ -29,6 +29,7 @@ public class LambertLighting extends LightingModel {
                 lighting = lighting.add(lightContribution);
             }
         }
-        return lighting;
+
+        return lighting.multiply(object.getMaterial().getAlbedo().getVector());
     }
 }

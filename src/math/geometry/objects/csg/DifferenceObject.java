@@ -9,57 +9,55 @@ import java.util.*;
 
 public class DifferenceObject extends SceneObject {
 
-    private SceneObject object1;
-    private SceneObject object2;
+    private SceneObject objA;
+    private SceneObject objB;
 
-    public DifferenceObject(SceneObject object1, SceneObject object2, Material material) {
+    public DifferenceObject(SceneObject objA, SceneObject objB, Material material) {
         super(material);
-        this.object1 = object1;
-        this.object2 = object2;
+        this.objA = objA;
+        this.objB = objB;
     }
 
     public List<Intersection> intersect(Ray ray) {
-        List<Intersection> intersections = new ArrayList<>();
+        List<Intersection> intersectionsA = objA.intersect(ray);
+        List<Intersection> intersectionsB = objB.intersect(ray);
 
-        List<Intersection> intersections1 = object1.intersect(ray);
-        List<Intersection> intersections2 = object2.intersect(ray);
+        List<Intersection> combined = new ArrayList<>();
+        combined.addAll(intersectionsA);
+        combined.addAll(intersectionsB);
 
-        Collections.sort(intersections1);
-        Collections.sort(intersections2);
+        combined.sort(Comparator.comparingDouble(Intersection::getDistance));
+
+        return filterDifferenceIntervals(combined);
+    }
+
+    private List<Intersection> filterDifferenceIntervals(List<Intersection> intersections) {
+        List<Intersection> result = new ArrayList<>();
 
         boolean insideA = false;
         boolean insideB = false;
+        boolean wasInside = false;
 
-        List<Intersection> all = new ArrayList<>();
-        all.addAll(intersections1);
-        all.addAll(intersections2);
-        Collections.sort(all);
+        for (Intersection inter : intersections) {
+            SceneObject obj = inter.getObject();
+            if (obj == objA) insideA = !insideA;
+            else if (obj == objB) insideB = !insideB;
 
-        for (Intersection inter : all) {
-            boolean belongsToA = intersections1.contains(inter);
-
-            boolean valid = (belongsToA && !insideB) || (!belongsToA && insideA);
-
-            if (valid) {
-                Vec3 normal = inter.getNormal();
-                if (!belongsToA) {
-                    normal = normal.multiply(-1);
-                }
-
-                intersections.add(new Intersection(inter.getPoint(), normal, inter.getDistance(), this));
+            boolean isInside = insideA && !insideB;
+            if (isInside != wasInside) {
+                Vec3 normal = (obj == objB) ? inter.getNormal().multiply(-1) : inter.getNormal();
+                result.add(new Intersection(
+                        inter.getPoint(),
+                        normal,
+                        inter.getDistance(),
+                        this
+                ));
             }
-
-            // Update flags
-            if (belongsToA) {
-                insideA = !insideA;
-            } else {
-                insideB = !insideB;
-            }
+            wasInside = isInside;
         }
-        return intersections;
+
+        return result;
     }
-
-
 
     public Vec3 getNormal(Vec3 p) {
         throw new UnsupportedOperationException("Use normal from Intersection instead.");
