@@ -28,17 +28,19 @@ public class UnionObject extends SceneObject {
 
         combined.sort(Comparator.comparingDouble(Intersection::getDistance));
 
-        return filterUnionIntervals(combined);
+        return filterUnionIntervals(combined, ray);
     }
 
-    private List<Intersection> filterUnionIntervals(List<Intersection> intersections) {
+    private List<Intersection> filterUnionIntervals(List<Intersection> intersections, Ray ray) {
         List<Intersection> result = new ArrayList<>();
 
-        boolean insideA = false;
-        boolean insideB = false;
-        boolean wasInside = false;
+        boolean insideA = objA.isInside(ray.getP().add(ray.getV().multiply(1e-5f)));
+        boolean insideB = objB.isInside(ray.getP().add(ray.getV().multiply(1e-5f)));
+        boolean wasInside = insideA && insideB;
 
         for (Intersection inter : intersections) {
+            if (inter.getDistance() < 1e-5f) continue;
+
             SceneObject obj = inter.getObject();
             if (obj == objA) insideA = !insideA;
             else if (obj == objB) insideB = !insideB;
@@ -60,5 +62,15 @@ public class UnionObject extends SceneObject {
 
     public Vec3 getNormal(Vec3 p) {
         throw new UnsupportedOperationException("Use normal from Intersection instead.");
+    }
+
+    public boolean isInside(Vec3 point) {
+        return objA.isInside(point) || objB.isInside(point);
+    }
+
+    public UnionObject transform(Mat4 transformMatrix) {
+        SceneObject transformedA = objA.transform(transformMatrix);
+        SceneObject transformedB = objB.transform(transformMatrix);
+        return new UnionObject(transformedA, transformedB, this.getMaterial());
     }
 }

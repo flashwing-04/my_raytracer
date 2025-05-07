@@ -7,6 +7,7 @@ import lighting.*;
 import scene.*;
 import stuff.*;
 
+import java.sql.SQLOutput;
 import java.util.*;
 
 public class CookTorranceLighting extends LightingModel {
@@ -32,27 +33,24 @@ public class CookTorranceLighting extends LightingModel {
         
         Vec3 finalColor = new Vec3(0);
 
+        float nv = Math.max(normal.dot(view), 0.0f);
+        Vec3 F = fresnelSchlick(nv, material);
+
         for( Light light : lights) {
             Vec3 lightDir = (light.getP().subtract(point)).normalize();
             Vec3 h = view.add(lightDir).normalize();
 
             float nh = Math.max(normal.dot(h), 0.0f);
-            float vh = Math.max(view.dot(h), 0.0f);
-            float nv = Math.max(normal.dot(view), 0.0f);
             float nl = Math.max(normal.dot(lightDir), 0.0f);
 
             float D = distributionGGX(nh, roughness);
-            Vec3 F = fresnelSchlick(vh, material);
             float G = geometrySmith(nv, nl, roughness);
 
-            Vec3 specular = (F.multiply(D*G)).multiply(1.0f / (4.0f * nv * nl + 0.0001f));
+            Vec3 kSpecular = (F.multiply(D*G)).multiply(1.0f / (4.0f * nv * nl + 0.0001f));
 
-            Vec3 kDiffuse = (new Vec3(1, 1, 1).subtract(F)).multiply(1.0f - metalness);
+            Vec3 kDiffuse = (new Vec3(1, 1, 1).subtract(kSpecular)).multiply(1.0f - metalness);
 
-            Vec3 diffuse = kDiffuse.multiply(albedo).divide((float)Math.PI);
-            Vec3 radiance = light.getColor().getVector().multiply(light.getIntensity());
-            Vec3 contribution = (diffuse.add(specular)).multiply(radiance).multiply(nl);
-
+            Vec3 contribution = ((light.getColor().getVector()).multiply(light.getIntensity() * nl)).multiply(kDiffuse.multiply(albedo).add(kSpecular));
             finalColor = finalColor.add(contribution);
         }
 
@@ -86,8 +84,7 @@ public class CookTorranceLighting extends LightingModel {
     }
 
     float geometrySchlickGGX(float nv, float roughness) {
-        float r = roughness + 1;
-        float k = (r * r)/ 8.0f;
+        float k = roughness/2.0f;
         float denominator = nv * (1.0f - k) + k;
 
         return nv/ denominator;

@@ -27,20 +27,19 @@ public class Sphere extends SceneObject {
         float b = 2 * (rayOrigin.dot(rayDirection) + (-1 * (rayDirection.dot(center))));
         float c = rayOrigin.dot(rayOrigin) + center.dot(center) - 2 *(center.dot(rayOrigin)) - (radius * radius);
 
-        if (a == 0){
-            if(b != 0) {
-                Vec3 point = ray.getPoint(-c / b);
-                Vec3 normal = getNormal(point);
-                intersections.add(new Intersection(point, normal, -c / b, this));
-                return intersections;
-            }
+        if (a == 0 && b != 0) {
+            Vec3 point = ray.getPoint(-c / b);
+            Vec3 normal = getNormal(point);
+            intersections.add(new Intersection(point, normal, -c / b, this));
+
+            return intersections;
         }
 
         float discriminant = b * b - 4 * a * c;
 
-        if(discriminant > 0) {
+        if(discriminant > 1e-6f) {
             float sqrtDiscriminant = (float) Math.sqrt(discriminant);
-            float k = (b < 0) ? (-b - sqrtDiscriminant) / 2f : (-b + sqrtDiscriminant) / 2f;
+            float k = (b < 1e-6f) ? (-b - sqrtDiscriminant) / 2f : (-b + sqrtDiscriminant) / 2f;
             float s1 = k / a;
             float s2 = c / k;
 
@@ -69,4 +68,14 @@ public class Sphere extends SceneObject {
         return radius;
     }
 
+    public boolean isInside(Vec3 point) {
+        Vec3 diff = point.subtract(center);
+        float distanceSquared = diff.dot(diff);
+        return distanceSquared < radius * radius;
+    }
+
+    public Sphere transform(Mat4 transformMatrix) {
+        Vec3 transformedCenter = transformMatrix.transform(center);
+        return new Sphere(transformedCenter, radius, this.getMaterial());
+    }
 }

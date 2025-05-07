@@ -124,6 +124,28 @@ public class Mat4 {
         return this;
     }
 
+    public Vec3 transform(Vec3 v) {
+        float x = v.getX();
+        float y = v.getY();
+        float z = v.getZ();
+
+        float[] m = this.values;
+
+        float tx = m[0] * x + m[1] * y + m[2] * z + m[3];
+        float ty = m[4] * x + m[5] * y + m[6] * z + m[7];
+        float tz = m[8] * x + m[9] * y + m[10] * z + m[11];
+        float tw = m[12] * x + m[13] * y + m[14] * z + m[15];
+
+        // Handle homogeneous coordinate w
+        if (tw != 0 && tw != 1) {
+            tx /= tw;
+            ty /= tw;
+            tz /= tw;
+        }
+
+        return new Vec3(tx, ty, tz);
+    }
+
     public Mat4 inverse() {
         float det = determinant();
         if (det == 0) {

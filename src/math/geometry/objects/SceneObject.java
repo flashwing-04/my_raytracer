@@ -24,4 +24,7 @@ public abstract class SceneObject {
 
     public abstract Vec3 getNormal(Vec3 p);
 
+    public abstract boolean isInside(Vec3 point);
+
+    public abstract SceneObject transform(Mat4 transformationMatrix);
 }

@@ -2,8 +2,7 @@ import java.awt.Image;
 import java.awt.Toolkit;
 import java.awt.image.DirectColorModel;
 import java.awt.image.MemoryImageSource;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 import javax.swing.ImageIcon;
 import javax.swing.JFrame;
@@ -34,11 +33,8 @@ public class MyRaytracer {
         Vec3 imgPlaneR = new Vec3(1, 0, 0);
         Camera camera = new Camera(cameraPos,cameraV, imgPlaneR, 2, 2, 1);
 
-        ArrayList<SceneObject> objects = getQuadrik();
-        ArrayList<Light> lights = getLights1();
-
-        //ArrayList<Light> lights = new ArrayList<>();
-        //lights.add(new lighting.Light(new Vec3(3, 2, 3), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
+        ArrayList<SceneObject> objects = getCSG();
+        ArrayList<Light> lights = getLights();
 
         Vec3 pxStart = camera.getPxStart();
         Vec3 pxRightStep = camera.getPxRightStep(resX);
@@ -101,11 +97,11 @@ public class MyRaytracer {
         }
     }
 
-    public static ArrayList<Light> getLights1(){
+    public static ArrayList<Light> getLights(){
         ArrayList<lighting.Light> lights = new ArrayList<>();
 
-        lights.add(new lighting.Light(new Vec3(-4, 4, 3), new Vec3(0, 0, -1), 2f, new Color(1, 1, 1)));
-        lights.add(new lighting.Light(new Vec3(0, 2, -10), new Vec3(0, 0, 1), 1f, new Color(1, 1, 1)));
+        lights.add(new lighting.Light(new Vec3(3, 2, 5), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
+        //lights.add(new lighting.Light(new Vec3(-5, 0, 0), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
 
         return lights;
     }
@@ -113,24 +109,52 @@ public class MyRaytracer {
     public static ArrayList<SceneObject> getQuadrik() {
         ArrayList<SceneObject> objects = new ArrayList<>();
         Mat4 transform = new Mat4().translate(0, 0, -3);
-        Quadrik q = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(0.75f, 0.60f, 0.30f), 0.07f, 0.001f, 0)).transform(transform);
+        Quadrik q = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(0.0f, 0.60f, 0.30f), 0.6f, 0.001f, 0)).transform(transform);
         objects.add(q);
         return objects;
     }
 
-    public static ArrayList<SceneObject> getUnion() {
+    public static ArrayList<SceneObject> getCSG() {
         ArrayList<SceneObject> objects = new ArrayList<>();
-        Mat4 transform1 = new Mat4().translate(0.5f, 0, -3);
-        Quadrik q1 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(1, 0, 0), 0.2f, 0.95f, 0)).transform(transform1);
-        Mat4 transform2 = new Mat4().translate(-0.5f, 0, -3);
-        Quadrik q2 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(1, 0, 0), 0.2f, 0.95f, 0)).transform(transform2);
-        Mat4 transform3 = new Mat4().translate(0, 0, -3.5f);
-        Quadrik q3 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(0.55f, 0.47f, 0.14f), 0.001f, 0.001f, 0)).transform(transform3);
 
-        IntersectionObject i = new IntersectionObject(q1, q2, q3.getMaterial());
-        DifferenceObject i2 = new DifferenceObject(q3, i, q3.getMaterial());
+        Material material = new Material(new Color(0.5f, 0.2f, 0.3f), 0.1f, 0.01f, 0);
+        Mat4 transform = new Mat4().rotateY(0.5f).translate(0, 0, -3);
 
-        objects.add(i2);
+        SceneObject sphere = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -0.6f},material);
+        SceneObject cube = makeCube(material);
+        SceneObject cylinder1 = new Quadrik(new float[] {1, 1, 0, 0, 0, 0, 0, 0, 0, -0.2f},material);
+        SceneObject cylinder2 = new Quadrik(new float[] {0, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f},material);
+
+
+        IntersectionObject intersect1 = new IntersectionObject(sphere, cube, material);
+        DifferenceObject difference1 = new DifferenceObject(intersect1, cylinder1, material);
+        DifferenceObject difference2 = new DifferenceObject(difference1, cylinder2, material).transform(transform);
+
+        objects.add(difference2);
+
+        SceneObject sphere2 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f},material);
+        sphere2 = sphere2.transform(transform);
+
+        objects.add(sphere2);
+
         return objects;
+    }
+
+    public static SceneObject makeCube(Material material) {
+        List<SceneObject> faces = Arrays.asList(
+                new Quadrik(new float[]{0,0,0,0,0,0,-1, 0, 0,-1}, material), // x ≥ -1
+                new Quadrik(new float[]{0,0,0,0,0,0, 1, 0, 0,-1}, material), // x ≤ +1
+                new Quadrik(new float[]{0,0,0,0,0,0, 0,-1, 0,-1}, material), // y ≥ -1
+                new Quadrik(new float[]{0,0,0,0,0,0, 0, 1, 0,-1}, material), // y ≤ +1
+                new Quadrik(new float[]{0,0,0,0,0,0, 0, 0,-1,-1}, material), // z ≥ -1
+                new Quadrik(new float[]{0,0,0,0,0,0, 0, 0, 1,-1}, material)  // z ≤ +1
+        );
+
+        SceneObject cube = faces.getFirst();
+        for (int i = 1; i < faces.size(); i++) {
+            cube = new IntersectionObject(cube, faces.get(i), material);
+        }
+
+        return cube;
     }
 }
