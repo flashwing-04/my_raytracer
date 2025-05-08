@@ -34,8 +34,9 @@ public class IntersectionObject extends SceneObject {
     private List<Intersection> filterIntersectionIntervals(List<Intersection> intersections, Ray ray) {
         List<Intersection> result = new ArrayList<>();
 
-        boolean insideA = objA.isInside(ray.getP().add(ray.getV().multiply(1e-5f)));
-        boolean insideB = objB.isInside(ray.getP().add(ray.getV().multiply(1e-5f)));
+        Vec3 startPoint = ray.getP().add(ray.getV().multiply(1e-5f));
+        boolean insideA = objA.isInside(startPoint);
+        boolean insideB = objB.isInside(startPoint);
         boolean wasInside = insideA && insideB;
 
         for (Intersection inter : intersections) {

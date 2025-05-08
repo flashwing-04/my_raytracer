@@ -65,7 +65,27 @@ public class MyRaytracer {
                    }
                 }
                 if(nearestObject != null) {
-                    pixels[y * resX + x] = new CookTorranceLighting(lights, nearestObject, nearestIntersection, camera, new Vec3(0.0f, 0.0f, 0.0f)).getFinalColor();
+                    ArrayList<Light> relevantLights = new ArrayList<>();
+                    for(Light light : lights) {
+
+                        Vec3 intersectionPoint = nearestIntersection.getPoint();
+                        Vec3 vectorToLight = light.getP().subtract(intersectionPoint);
+                        Vec3 offset = vectorToLight.normalize().multiply(1e-3f);
+                        Ray shadowRay = new Ray(intersectionPoint.add(offset), vectorToLight);
+
+                        float distanceLight = vectorToLight.getLength();
+                        boolean relevantLight = true;
+
+                        for(SceneObject object : objects) {
+                            if(object.isOccluding(shadowRay, distanceLight)) {
+                                relevantLight = false;
+                                break;
+                            }
+                        }
+
+                        if(relevantLight) relevantLights.add(light);
+                    }
+                    pixels[y * resX + x] = new CookTorranceLighting(relevantLights, nearestObject, nearestIntersection, camera, new Vec3(0.0f, 0.0f, 0.0f)).getFinalColor();
                                          //new LambertLighting(lights, nearestObject, nearestIntersection).getFinalColor();
                 }
             }
@@ -100,24 +120,36 @@ public class MyRaytracer {
     public static ArrayList<Light> getLights(){
         ArrayList<lighting.Light> lights = new ArrayList<>();
 
-        lights.add(new lighting.Light(new Vec3(3, 2, 5), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
-        //lights.add(new lighting.Light(new Vec3(-5, 0, 0), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
+        lights.add(new lighting.Light(new Vec3(1, 1, 2), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
+        //lights.add(new lighting.Light(new Vec3(-3, 0, 0), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
 
         return lights;
     }
 
     public static ArrayList<SceneObject> getQuadrik() {
         ArrayList<SceneObject> objects = new ArrayList<>();
-        Mat4 transform = new Mat4().translate(0, 0, -3);
-        Quadrik q = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(0.0f, 0.60f, 0.30f), 0.6f, 0.001f, 0)).transform(transform);
-        objects.add(q);
+        Mat4 transform = new Mat4().translate(-3.5f, 0, -3);
+        Mat4 transform2 = new Mat4().translate(0.75f, 0.25f, -1);
+        Quadrik q1 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(0.0f, 0.60f, 0.30f), 0.6f, 0.001f, 0)).transform(transform);
+        Quadrik q2 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -0.4f},new Material(new Color(0.0f, 0.60f, 0.30f), 0.6f, 0.001f, 0));
+
+        //SceneObject cube = makeCube(new Material(new Color(0.0f, 0.60f, 0.30f), 0.6f, 0.001f, 0)).transform(transform2);
+        //objects.add(cube);
+
+        Material material = new Material(new Color(0.0f, 0.60f, 0.30f), 0.6f, 0.001f, 0);
+        SceneObject sphere = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -0.6f},material);
+        SceneObject cube = makeCube(material);
+        DifferenceObject union1 = new DifferenceObject( cube, sphere, material);
+
+        objects.add(union1);
+        objects.add(q2);
         return objects;
     }
 
     public static ArrayList<SceneObject> getCSG() {
         ArrayList<SceneObject> objects = new ArrayList<>();
 
-        Material material = new Material(new Color(0.5f, 0.2f, 0.3f), 0.1f, 0.01f, 0);
+        Material material = new Material(new Color(1f, 0.2f, 0.3f), 0.1f, 0.01f, 0);
         Mat4 transform = new Mat4().rotateY(0.5f).translate(0, 0, -3);
 
         SceneObject sphere = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -0.6f},material);

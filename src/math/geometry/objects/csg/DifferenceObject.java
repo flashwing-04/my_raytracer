@@ -34,9 +34,10 @@ public class DifferenceObject extends SceneObject {
     private List<Intersection> filterDifferenceIntervals(List<Intersection> intersections, Ray ray) {
         List<Intersection> result = new ArrayList<>();
 
-        boolean insideA = objA.isInside(ray.getP().add(ray.getV().multiply(1e-5f)));
-        boolean insideB = objB.isInside(ray.getP().add(ray.getV().multiply(1e-5f)));
-        boolean wasInside = insideA && insideB;
+        Vec3 startPoint = ray.getP().add(ray.getV().multiply(1e-5f));
+        boolean insideA = objA.isInside(startPoint);
+        boolean insideB = objB.isInside(startPoint);
+        boolean wasInside = insideA && !insideB;
 
         for (Intersection inter : intersections) {
             if (inter.getDistance() < 1e-5f) continue;
