@@ -49,8 +49,12 @@ public class CookTorranceLighting extends LightingModel {
             Vec3 kSpecular = (F.multiply(D*G)).multiply(1.0f / (4.0f * nv * nl + 0.0001f));
 
             Vec3 kDiffuse = (new Vec3(1, 1, 1).subtract(kSpecular)).multiply(1.0f - metalness);
-
-            Vec3 contribution = ((light.getColor().getVector()).multiply(light.getIntensity() * nl)).multiply(kDiffuse.multiply(albedo).add(kSpecular));
+            float attenuation = 1f;
+            if (light instanceof SpotLight spot) {
+                attenuation = spot.getAttenuation(point);
+            }
+            Vec3 contribution = (light.getColor().getVector().multiply(light.getIntensity() * nl * attenuation))
+                    .multiply(kDiffuse.multiply(albedo).add(kSpecular));
             finalColor = finalColor.add(contribution);
         }
 
