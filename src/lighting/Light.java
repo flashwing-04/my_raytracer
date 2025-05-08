@@ -15,6 +15,10 @@ public class Light {
         this.color = color;
     }
 
+    public Light copyWithIntensity(float newIntensity) {
+        return new Light(this.getP(), newIntensity, this.getColor());
+    }
+
     public Vec3 getP() {
         return p;
     }

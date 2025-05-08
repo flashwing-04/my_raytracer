@@ -23,6 +23,9 @@ public class MyRaytracer {
     private static int resY = 1024;
     private static int[] pixels = new int[resX * resY];
 
+    static final int SOFT_SHADOW_SAMPLES = 128;
+    static final float LIGHT_RADIUS = 0.2f;
+
     private static MemoryImageSource mis;
 
     public static void main(String[] args) {
@@ -65,32 +68,75 @@ public class MyRaytracer {
                    }
                 }
                 if(nearestObject != null) {
-                    ArrayList<Light> relevantLights = new ArrayList<>();
-                    for(Light light : lights) {
 
-                        Vec3 intersectionPoint = nearestIntersection.getPoint();
-                        Vec3 vectorToLight = light.getP().subtract(intersectionPoint);
-                        Vec3 offset = vectorToLight.normalize().multiply(1e-3f);
-                        Ray shadowRay = new Ray(intersectionPoint.add(offset), vectorToLight);
+                    ArrayList<Light> relevantLights = getRelevantLightsWithSoftShadows(nearestIntersection, lights, objects);
 
-                        float distanceLight = vectorToLight.getLength();
-                        boolean relevantLight = true;
-
-                        for(SceneObject object : objects) {
-                            if(object.isOccluding(shadowRay, distanceLight)) {
-                                relevantLight = false;
-                                break;
-                            }
-                        }
-
-                        if(relevantLight) relevantLights.add(light);
-                    }
                     pixels[y * resX + x] = new CookTorranceLighting(relevantLights, nearestObject, nearestIntersection, camera, new Vec3(0.0f, 0.0f, 0.0f)).getFinalColor();
                                          //new LambertLighting(lights, nearestObject, nearestIntersection).getFinalColor();
                 }
             }
         }
         mis.newPixels();
+    }
+
+    public static ArrayList<Light> getRelevantLightsWithSoftShadows(Intersection nearestIntersection, ArrayList<Light> lights, ArrayList<SceneObject> objects) {
+        ArrayList<Light> relevantLights = new ArrayList<>();
+        Vec3 intersectionPoint = nearestIntersection.getPoint();
+
+        for (Light light : lights) {
+
+            float shadowSum = 0f;
+            for (int sample = 0; sample < SOFT_SHADOW_SAMPLES; sample++) {
+
+                Vec3 lightPos = light.getP();
+                Vec3 diskSample = randomPointInDisk(LIGHT_RADIUS);
+
+                Vec3 samplePos;
+                if (light instanceof SpotLight spot) {
+                    Vec3 dir = spot.getDirection();
+                    Vec3 up = Math.abs(dir.getY()) < 0.99 ? new Vec3(0,1,0) : new Vec3(1,0,0);
+                    Vec3 right = up.cross(dir).normalize();
+                    Vec3 localUp = dir.cross(right).normalize();
+                    samplePos = lightPos.add(right.multiply(diskSample.getX())).add(localUp.multiply(diskSample.getY()));
+                } else {
+                    samplePos = lightPos.add(diskSample);
+                }
+
+                Vec3 vectorToLight = samplePos.subtract(intersectionPoint);
+                Vec3 offset = vectorToLight.normalize().multiply(1e-3f);
+                Ray shadowRay = new Ray(intersectionPoint.add(offset), vectorToLight);
+                float distanceLight = vectorToLight.getLength();
+
+                boolean occluded = false;
+                for (SceneObject object : objects) {
+                    if (object.isOccluding(shadowRay, distanceLight)) {
+                        occluded = true;
+                        break;
+                    }
+                }
+
+                if (!occluded && light instanceof SpotLight spot) {
+                    float attenuation = spot.getAttenuation(intersectionPoint);
+                    if (attenuation <= 0f) occluded = true;
+                }
+
+                if (!occluded) shadowSum += 1f;
+            }
+
+            float shadowFactor = shadowSum / SOFT_SHADOW_SAMPLES;
+
+            if (shadowFactor > 0f) {
+                Light shadowedLight = light.copyWithIntensity(light.getIntensity() * shadowFactor);
+                relevantLights.add(shadowedLight);
+            }
+        }
+        return relevantLights;
+    }
+
+    public static Vec3 randomPointInDisk(float radius) {
+        double r = radius * Math.sqrt(Math.random());
+        double theta = 2 * Math.PI * Math.random();
+        return new Vec3((float)(r * Math.cos(theta)), (float)(r * Math.sin(theta)), 0f);
     }
 
     public static void setUpWindow() {
@@ -120,8 +166,10 @@ public class MyRaytracer {
     public static ArrayList<Light> getLights(){
         ArrayList<lighting.Light> lights = new ArrayList<>();
 
-        lights.add(new lighting.Light(new Vec3(1, 1, 2), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
-        //lights.add(new lighting.Light(new Vec3(-3, 0, 0), new Vec3(0, 0, -1), 1f, new Color(1, 1, 1)));
+        //lights.add(new SpotLight(new Vec3(0, 0, 3),1f, new Color(1, 1, 1), new Vec3(0, 0, -1), (float)Math.toRadians(7), 0.2f));
+
+        lights.add(new lighting.Light(new Vec3(1, 1, 2), 1f, new Color(1, 1, 1)));
+        //lights.add(new lighting.Light(new Vec3(-3, 0, 0),1f, new Color(1, 1, 1)));
 
         return lights;
     }

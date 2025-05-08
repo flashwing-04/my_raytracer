@@ -15,6 +15,10 @@ public class SpotLight extends Light {
         this.exponent = exponent;
     }
 
+    public SpotLight copyWithIntensity(float newIntensity) {
+        return new SpotLight(this.getP(), newIntensity, this.getColor(), this.getDirection(), this.getAngle(), this.getExponent());
+    }
+
     public float getAttenuation(Vec3 point) {
         Vec3 toPoint = point.subtract(getP()).normalize();
 

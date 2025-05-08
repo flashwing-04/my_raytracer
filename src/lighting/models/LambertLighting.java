@@ -23,7 +23,14 @@ public class LambertLighting extends LightingModel {
             float dot = normal.dot(lightDir);
 
             if(dot > 0) {
-                Vec3 lightColor = light.getColor().getVector().multiply(light.getIntensity());
+                float attenuation = 1.0f;
+
+                if (light instanceof SpotLight spot) {
+                    attenuation = spot.getAttenuation(point);
+                    if (attenuation <= 0f) continue;
+                }
+
+                Vec3 lightColor = light.getColor().getVector().multiply(light.getIntensity() * attenuation);
                 Vec3 lightContribution = lightColor.multiply(dot);
 
                 lighting = lighting.add(lightContribution);
