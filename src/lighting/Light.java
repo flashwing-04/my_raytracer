@@ -5,23 +5,22 @@ import stuff.*;
 
 public class Light {
 
-    public Vec3 p, l;
+    public Vec3 p;
     public float intensity;
     public Color color;
 
-    public Light(Vec3 p, Vec3 l, float intensity, Color color) {
+    public Light(Vec3 p, float intensity, Color color) {
         this.p = p;
-        this.l = l.normalize();
         this.intensity = intensity;
         this.color = color;
     }
 
-    public Vec3 getP() {
-        return p;
+    public Light copyWithIntensity(float newIntensity) {
+        return new Light(this.getP(), newIntensity, this.getColor());
     }
 
-    public Vec3 getL() {
-        return l;
+    public Vec3 getP() {
+        return p;
     }
 
     public float getIntensity() {

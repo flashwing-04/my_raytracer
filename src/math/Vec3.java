@@ -2,9 +2,11 @@ package math;
 
 public class Vec3 {
 
-    private float x;
-    private float y;
-    private float z;
+    public static final Vec3 ZERO = new Vec3(0f, 0f, 0f);
+
+    private final float x;
+    private final float y;
+    private final float z;
 
     public Vec3(float x, float y, float z) {
         this.x = x;
@@ -64,6 +66,18 @@ public class Vec3 {
         float ny = z * v.getX() - x * v.getZ();
         float nz = x * v.getY() - y * v.getX();
         return new Vec3(nx, ny, nz);
+    }
+
+    public Vec3 mix(Vec3 y, Vec3 a) {
+        return new Vec3(
+                this.x * (1 - a.getX()) + y.getX() * a.getX(),
+                this.y * (1 - a.getY()) + y.getY() * a.getY(),
+                this.z * (1 - a.getZ()) + y.getZ() * a.getZ()
+        );
+    }
+
+    public Vec3 reflect(Vec3 normal) {
+        return this.subtract(normal.multiply(2 * normal.dot(this)));
     }
 
     public float getLength() {

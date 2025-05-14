@@ -51,21 +51,20 @@ public class Quadrik extends SceneObject {
                 + 2 * (d * px * py + e * px * pz + f * py * pz
                 + g * px + h * py + i * pz) + j;
 
-        if (A == 0) {
-            if (B != 0) {
-                float t = -C / B;
-                Vec3 point = ray.getPoint(t);
-                Vec3 normal = getNormal(point);
-                intersections.add(new Intersection(point, normal, t, this));
-                return intersections;
-            }
+        if (A == 0 && B != 0) {
+            float t = -C / B;
+            Vec3 point = ray.getPoint(t);
+            Vec3 normal = getNormal(point);
+            intersections.add(new Intersection(point, normal, t, this));
+
+            return intersections;
         }
 
         float discriminant = B * B - 4 * A * C;
 
-        if (discriminant > 0) {
+        if (discriminant > 1e-6f) {
             float sqrtDiscriminant = (float) Math.sqrt(discriminant);
-            float k = (B < 0) ? (-B - sqrtDiscriminant) / 2f : (-B + sqrtDiscriminant) / 2f;
+            float k = (B < 1e-6f) ? (-B - sqrtDiscriminant) / 2f : (-B + sqrtDiscriminant) / 2f;
             float s1 = k / A;
             float s2 = C / k;
 
@@ -80,6 +79,25 @@ public class Quadrik extends SceneObject {
         }
 
         return intersections;
+    }
+
+    public boolean isInside(Vec3 point) {
+        float x = point.getX();
+        float y = point.getY();
+        float z = point.getZ();
+
+        float value = coefficients[0] * x * x +
+                coefficients[1] * y * y +
+                coefficients[2] * z * z +
+                2 * (coefficients[3] * x * y +
+                        coefficients[4] * x * z +
+                        coefficients[5] * y * z) +
+                2 * (coefficients[6] * x +
+                        coefficients[7] * y +
+                        coefficients[8] * z) +
+                coefficients[9];
+
+        return value <= 1e-6f;
     }
 
     public Vec3 getNormal(Vec3 p) {

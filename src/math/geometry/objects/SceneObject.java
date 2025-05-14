@@ -24,4 +24,18 @@ public abstract class SceneObject {
 
     public abstract Vec3 getNormal(Vec3 p);
 
+    public abstract boolean isInside(Vec3 point);
+
+    public boolean isOccluding(Ray ray, float maxDistance) {
+        List<Intersection> intersections = this.intersect(ray);
+        for (Intersection intersection : intersections) {
+            float dist = intersection.getDistance();
+            if (dist > 1e-5f && dist < maxDistance) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public abstract SceneObject transform(Mat4 transformationMatrix);
 }

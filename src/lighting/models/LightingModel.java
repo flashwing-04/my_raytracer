@@ -1,39 +1,13 @@
 package lighting.models;
 
-import java.util.ArrayList;
-
-import math.geometry.objects.*;
-import math.geometry.*;
-import lighting.*;
+import lighting.LightingContext;
 import math.Vec3;
-import stuff.*;
+import stuff.Color;
 
 public abstract class LightingModel {
-
-    ArrayList<Light> lights;
-    SceneObject object;
-    Intersection intersection;
-
-    public LightingModel(ArrayList<Light> lights, SceneObject object, Intersection intersection) {
-        this.lights = lights;
-        this.object = object;
-        this.intersection = intersection;
-    }
-
-    protected abstract Vec3 computeLight();
-
-    public int getFinalColor() { return new Color(computeLight()).toHex(); }
-
-    public ArrayList<Light> getLights() {
-        return lights;
-    }
-
-    public SceneObject getObject() {
-        return object;
-    }
-
-    public Intersection getIntersection() {
-        return intersection;
-    }
+  
+    public abstract Vec3 computeLight(LightingContext ctx);
+  
+    public Color getFinalColor(LightingContext ctx) {
+        return new Color(computeLight(ctx));
 }
-
