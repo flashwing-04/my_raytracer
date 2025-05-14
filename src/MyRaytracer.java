@@ -1,32 +1,33 @@
-import java.awt.Image;
-import java.awt.Toolkit;
+import java.awt.*;
 import java.awt.image.DirectColorModel;
 import java.awt.image.MemoryImageSource;
 import java.util.*;
+import java.util.List;
+import javax.swing.*;
 
-import javax.swing.ImageIcon;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-
+import lighting.*;
+import lighting.models.*;
 import math.*;
 import math.geometry.*;
 import math.geometry.objects.*;
 import math.geometry.objects.csg.*;
 import scene.*;
 import stuff.*;
-import lighting.*;
-import lighting.models.*;
+import stuff.Color;
 
 public class MyRaytracer {
 
-    private static int resX = 1024;
-    private static int resY = 1024;
-    private static int[] pixels = new int[resX * resY];
+    private static final int RES_X = 1024;
+    private static final int RES_Y = 1024;
+    private static final int[] pixels = new int[RES_X * RES_Y];
 
-    static final int SOFT_SHADOW_SAMPLES = 128;
-    static final float LIGHT_RADIUS = 0.2f;
+    private static final int SOFT_SHADOW_SAMPLES = 1;
+    private static final float LIGHT_RADIUS = 0f;
 
-    private static MemoryImageSource mis;
+    private static final float EPSILON = 1e-4f;
+    private static MemoryImageSource imageSource;
+
+    private static final LightingModel cookTorranceLighting = new CookTorranceLighting();
 
     public static void main(String[] args) {
         setUpWindow();
@@ -36,115 +37,128 @@ public class MyRaytracer {
         Vec3 imgPlaneR = new Vec3(1, 0, 0);
         Camera camera = new Camera(cameraPos,cameraV, imgPlaneR, 2, 2, 1);
 
-        ArrayList<SceneObject> objects = getCSG();
-        ArrayList<Light> lights = getLights();
+        List<SceneObject> sceneObjects = getCSG();
+        List<Light> lights = getLights();
 
-        Vec3 pxStart = camera.getPxStart();
-        Vec3 pxRightStep = camera.getPxRightStep(resX);
-        Vec3 pxUpStep = camera.getPxUpStep(resY);
-
-        for (int y = 0; y < resY; ++y) {
-            for (int x = 0; x < resX; ++x) {
-
-                Vec3 pixelPos = pxStart.add(pxRightStep.multiply(x)).add(pxUpStep.multiply(y));
-                Ray ray = new Ray(camera.getPosition(),  pixelPos.subtract(camera.getPosition()));
-
-                SceneObject nearestObject = null;
-                Intersection nearestIntersection = null;
-                float nearestDistance = Float.MAX_VALUE;
-
-                for(SceneObject object : objects) {
-                   List<Intersection> intersections = object.intersect(ray);
-
-                   if(!intersections.isEmpty()) {
-                       for (Intersection intersection : intersections) {
-                           float s = intersection.getDistance();
-                           if (s > 0 && s < nearestDistance) {
-                               nearestObject = object;
-                               nearestDistance = s;
-                               nearestIntersection = intersection;
-                           }
-                       }
-                   }
-                }
-                if(nearestObject != null) {
-
-                    ArrayList<Light> relevantLights = getRelevantLightsWithSoftShadows(nearestIntersection, lights, objects);
-
-                    pixels[y * resX + x] = new CookTorranceLighting(relevantLights, nearestObject, nearestIntersection, camera, new Vec3(0.0f, 0.0f, 0.0f)).getFinalColor();
-                                         //new LambertLighting(lights, nearestObject, nearestIntersection).getFinalColor();
-                }
-            }
-        }
-        mis.newPixels();
+        renderScene(camera, sceneObjects, lights);
+        imageSource.newPixels();
     }
 
-    public static ArrayList<Light> getRelevantLightsWithSoftShadows(Intersection nearestIntersection, ArrayList<Light> lights, ArrayList<SceneObject> objects) {
-        ArrayList<Light> relevantLights = new ArrayList<>();
-        Vec3 intersectionPoint = nearestIntersection.getPoint();
+    private static void renderScene(Camera camera, List<SceneObject> objects, List<Light> lights) {
+        Vec3 pxStart = camera.getPxStart();
+        Vec3 stepRight = camera.getPxRightStep(RES_X);
+        Vec3 stepUp = camera.getPxUpStep(RES_Y);
 
-        for (Light light : lights) {
-
-            float shadowSum = 0f;
-            for (int sample = 0; sample < SOFT_SHADOW_SAMPLES; sample++) {
-
-                Vec3 lightPos = light.getP();
-                Vec3 diskSample = randomPointInDisk(LIGHT_RADIUS);
-
-                Vec3 samplePos;
-                if (light instanceof SpotLight spot) {
-                    Vec3 dir = spot.getDirection();
-                    Vec3 up = Math.abs(dir.getY()) < 0.99 ? new Vec3(0,1,0) : new Vec3(1,0,0);
-                    Vec3 right = up.cross(dir).normalize();
-                    Vec3 localUp = dir.cross(right).normalize();
-                    samplePos = lightPos.add(right.multiply(diskSample.getX())).add(localUp.multiply(diskSample.getY()));
-                } else {
-                    samplePos = lightPos.add(diskSample);
-                }
-
-                Vec3 vectorToLight = samplePos.subtract(intersectionPoint);
-                Vec3 offset = vectorToLight.normalize().multiply(1e-3f);
-                Ray shadowRay = new Ray(intersectionPoint.add(offset), vectorToLight);
-                float distanceLight = vectorToLight.getLength();
-
-                boolean occluded = false;
-                for (SceneObject object : objects) {
-                    if (object.isOccluding(shadowRay, distanceLight)) {
-                        occluded = true;
-                        break;
-                    }
-                }
-
-                if (!occluded && light instanceof SpotLight spot) {
-                    float attenuation = spot.getAttenuation(intersectionPoint);
-                    if (attenuation <= 0f) occluded = true;
-                }
-
-                if (!occluded) shadowSum += 1f;
-            }
-
-            float shadowFactor = shadowSum / SOFT_SHADOW_SAMPLES;
-
-            if (shadowFactor > 0f) {
-                Light shadowedLight = light.copyWithIntensity(light.getIntensity() * shadowFactor);
-                relevantLights.add(shadowedLight);
+        for (int y = 0; y < RES_Y; ++y) {
+            for (int x = 0; x < RES_X; ++x) {
+                Vec3 pixelPos = pxStart.add(stepRight.multiply(x)).add(stepUp.multiply(y));
+                Ray ray = new Ray(camera.getPosition(), pixelPos.subtract(camera.getPosition()));
+                Color color = traceRay(ray, objects, lights, camera, 5);
+                pixels[y * RES_X + x] = color.toHex();
             }
         }
+    }
+
+    private static Color traceRay(Ray ray, List<SceneObject> objects, List<Light> lights, Camera camera, int depth) {
+        if (depth <= 0) return Color.BLACK;
+
+        Intersection nearestIntersection = getNearestIntersection(ray, objects);
+        if (nearestIntersection == null) return Color.BLACK;
+
+        SceneObject hitObject = nearestIntersection.getObject();
+        Material material = hitObject.getMaterial();
+
+        List<Light> relevantLights = computeSoftShadows(nearestIntersection, lights, objects);
+
+        LightingContext context = new LightingContext(relevantLights, hitObject, nearestIntersection, camera, Vec3.ZERO);
+        Color localColor = cookTorranceLighting.getFinalColor(context);
+
+
+        Vec3 viewDir = ray.getV().multiply(-1).normalize();
+        float cosTheta = Math.max(0f, nearestIntersection.getNormal().dot(viewDir));
+        float fresnel = material.getF0().getX() + (1 - material.getF0().getX()) * (float)Math.pow(1 - cosTheta, 5);
+        float reflectivity = fresnel * (1 - material.getRoughness());
+
+        if (reflectivity >= 0.01f) {
+            Vec3 reflectionDir = ray.getV().reflect(nearestIntersection.getNormal());
+            Vec3 reflectionOrigin = nearestIntersection.getPoint().add(reflectionDir.multiply(EPSILON));
+            Color reflected = traceRay(new Ray(reflectionOrigin, reflectionDir), objects, lights, camera, depth - 1);
+            Vec3 blended = reflected.getVector().multiply(reflectivity).add(localColor.getVector().multiply(1 - reflectivity));
+            return new Color(blended);
+        }
+
+        return localColor;
+    }
+
+    private static Intersection getNearestIntersection(Ray ray, List<SceneObject> objects) {
+        Intersection nearestIntersection = null;
+        float minDist = Float.MAX_VALUE;
+
+        for (SceneObject obj : objects) {
+            for (Intersection inter : obj.intersect(ray)) {
+                float dist = inter.getDistance();
+                if (dist > 0 && dist < minDist) {
+                    minDist = dist;
+                    nearestIntersection = inter;
+                }
+            }
+        }
+        return nearestIntersection;
+    }
+
+    private static List<Light> computeSoftShadows(Intersection hit, List<Light> lights, List<SceneObject> objects) {
+        List<Light> relevantLights = new ArrayList<>();
+        Vec3 point = hit.getPoint();
+
+        for (Light light : lights) {
+            float shadowCount = 0;
+
+            for (int i = 0; i < SOFT_SHADOW_SAMPLES; i++) {
+                Vec3 samplePos = jitterLightPosition(light);
+                Vec3 toLight = samplePos.subtract(point);
+                float distance = toLight.getLength();
+
+                Ray shadowRay = new Ray(point.add(toLight.normalize().multiply(EPSILON)), toLight);
+                boolean occluded = objects.stream().anyMatch(obj -> obj.isOccluding(shadowRay, distance));
+
+                if (!occluded && light instanceof SpotLight spot && spot.getAttenuation(point) <= 0) {
+                    occluded = true;
+                }
+
+                if (!occluded) shadowCount += 1;
+            }
+
+            float factor = shadowCount / SOFT_SHADOW_SAMPLES;
+            if (factor > 0) {
+                relevantLights.add(light.copyWithIntensity(light.getIntensity() * factor));
+            }
+        }
+
         return relevantLights;
     }
 
-    public static Vec3 randomPointInDisk(float radius) {
-        double r = radius * Math.sqrt(Math.random());
+    private static Vec3 jitterLightPosition(Light light) {
+        Vec3 disk = randomPointInDisk();
+        if (light instanceof SpotLight spot) {
+            Vec3 dir = spot.getDirection();
+            Vec3 up = Math.abs(dir.getY()) < 0.99 ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0);
+            Vec3 right = up.cross(dir).normalize();
+            Vec3 localUp = dir.cross(right).normalize();
+            return light.getP().add(right.multiply(disk.getX())).add(localUp.multiply(disk.getY()));
+        }
+        return light.getP().add(disk);
+    }
+
+    private static Vec3 randomPointInDisk() {
+        double r = MyRaytracer.LIGHT_RADIUS * Math.sqrt(Math.random());
         double theta = 2 * Math.PI * Math.random();
         return new Vec3((float)(r * Math.cos(theta)), (float)(r * Math.sin(theta)), 0f);
     }
 
-    public static void setUpWindow() {
-        //fillBackground(pixels, resX, resY);
-
-        mis = new MemoryImageSource(resX, resY, new DirectColorModel(24, 0xff0000, 0xff00, 0xff), pixels, 0, resX);
-        mis.setAnimated(true);
-        Image image = Toolkit.getDefaultToolkit().createImage(mis);
+    private static void setUpWindow() {
+        imageSource = new MemoryImageSource(RES_X, RES_Y, new DirectColorModel(24, 0xff0000, 0xff00, 0xff), pixels, 0, RES_X);
+        imageSource.setAnimated(true);
+        Image image = Toolkit.getDefaultToolkit().createImage(imageSource);
 
         JFrame frame = new JFrame("My Raytracer");
         frame.add(new JLabel(new ImageIcon(image)));
@@ -153,88 +167,49 @@ public class MyRaytracer {
         frame.setVisible(true);
     }
 
-    public static void fillBackground(int[] pixels, int resX, int resY) {
-        for (int y = 0; y < resY; ++y) {
-            for (int x = 0; x < resX; ++x) {
-                boolean isLight = ((x / 64) + (y / 64)) % 2 == 0;
-                int grey = isLight ? 0xD0D0D0 : 0xB0B0B0;
-                pixels[y * resX + x] = grey;
-            }
-        }
+    private static List<Light> getLights() {
+        return Arrays.asList(
+                new SpotLight(new Vec3(0, 0, 3), 1f, Color.WHITE, new Vec3(0, 0, -1), (float) Math.toRadians(15), 1f),
+                new Light(new Vec3(1, 1, 2), 1f, Color.WHITE),
+                new Light(new Vec3(-3, 0, 0), 1f, Color.WHITE)
+        );
     }
 
-    public static ArrayList<Light> getLights(){
-        ArrayList<lighting.Light> lights = new ArrayList<>();
+    private static List<SceneObject> getCSG() {
+        List<SceneObject> objects = new ArrayList<>();
 
-        //lights.add(new SpotLight(new Vec3(0, 0, 3),1f, new Color(1, 1, 1), new Vec3(0, 0, -1), (float)Math.toRadians(7), 0.2f));
+        Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.9f, 0.01f, 0);
+        Material greenish = new Material(new Color(0.4f, 0.9f, 0.6f), 0.2f, 0.7f, 0);
 
-        lights.add(new lighting.Light(new Vec3(1, 1, 2), 1f, new Color(1, 1, 1)));
-        //lights.add(new lighting.Light(new Vec3(-3, 0, 0),1f, new Color(1, 1, 1)));
+        objects.add(new Area(new Vec3(0, 1, 0), -1, redish));
 
-        return lights;
-    }
-
-    public static ArrayList<SceneObject> getQuadrik() {
-        ArrayList<SceneObject> objects = new ArrayList<>();
-        Mat4 transform = new Mat4().translate(-3.5f, 0, -3);
-        Mat4 transform2 = new Mat4().translate(0.75f, 0.25f, -1);
-        Quadrik q1 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -1},new Material(new Color(0.0f, 0.60f, 0.30f), 0.6f, 0.001f, 0)).transform(transform);
-        Quadrik q2 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -0.4f},new Material(new Color(0.0f, 0.60f, 0.30f), 0.6f, 0.001f, 0));
-
-        //SceneObject cube = makeCube(new Material(new Color(0.0f, 0.60f, 0.30f), 0.6f, 0.001f, 0)).transform(transform2);
-        //objects.add(cube);
-
-        Material material = new Material(new Color(0.0f, 0.60f, 0.30f), 0.6f, 0.001f, 0);
-        SceneObject sphere = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -0.6f},material);
-        SceneObject cube = makeCube(material);
-        DifferenceObject union1 = new DifferenceObject( cube, sphere, material);
-
-        objects.add(union1);
-        objects.add(q2);
-        return objects;
-    }
-
-    public static ArrayList<SceneObject> getCSG() {
-        ArrayList<SceneObject> objects = new ArrayList<>();
-
-        Material material = new Material(new Color(1f, 0.2f, 0.3f), 0.1f, 0.01f, 0);
         Mat4 transform = new Mat4().rotateY(0.5f).translate(0, 0, -3);
+        SceneObject baseSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.6f}, redish);
+        SceneObject cube = makeCube(redish);
+        SceneObject cylX = new Quadrik(new float[]{1, 1, 0, 0, 0, 0, 0, 0, 0, -0.2f}, redish);
+        SceneObject cylY = new Quadrik(new float[]{0, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, redish);
 
-        SceneObject sphere = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -0.6f},material);
-        SceneObject cube = makeCube(material);
-        SceneObject cylinder1 = new Quadrik(new float[] {1, 1, 0, 0, 0, 0, 0, 0, 0, -0.2f},material);
-        SceneObject cylinder2 = new Quadrik(new float[] {0, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f},material);
+        SceneObject csgShape = new DifferenceObject(new DifferenceObject(new IntersectionObject(baseSphere, cube, redish), cylX, redish), cylY, redish).transform(transform);
 
+        SceneObject greenSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, greenish)
+                .transform(transform);
 
-        IntersectionObject intersect1 = new IntersectionObject(sphere, cube, material);
-        DifferenceObject difference1 = new DifferenceObject(intersect1, cylinder1, material);
-        DifferenceObject difference2 = new DifferenceObject(difference1, cylinder2, material).transform(transform);
-
-        objects.add(difference2);
-
-        SceneObject sphere2 = new Quadrik(new float[] {1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f},material);
-        sphere2 = sphere2.transform(transform);
-
-        objects.add(sphere2);
+        objects.add(csgShape);
+        objects.add(greenSphere);
 
         return objects;
     }
 
-    public static SceneObject makeCube(Material material) {
+    private static SceneObject makeCube(Material material) {
         List<SceneObject> faces = Arrays.asList(
-                new Quadrik(new float[]{0,0,0,0,0,0,-1, 0, 0,-1}, material), // x ≥ -1
-                new Quadrik(new float[]{0,0,0,0,0,0, 1, 0, 0,-1}, material), // x ≤ +1
-                new Quadrik(new float[]{0,0,0,0,0,0, 0,-1, 0,-1}, material), // y ≥ -1
-                new Quadrik(new float[]{0,0,0,0,0,0, 0, 1, 0,-1}, material), // y ≤ +1
-                new Quadrik(new float[]{0,0,0,0,0,0, 0, 0,-1,-1}, material), // z ≥ -1
-                new Quadrik(new float[]{0,0,0,0,0,0, 0, 0, 1,-1}, material)  // z ≤ +1
+                new Quadrik(new float[]{0, 0, 0, 0, 0, 0, -1, 0, 0, -1}, material),
+                new Quadrik(new float[]{0, 0, 0, 0, 0, 0, 1, 0, 0, -1}, material),
+                new Quadrik(new float[]{0, 0, 0, 0, 0, 0, 0, -1, 0, -1}, material),
+                new Quadrik(new float[]{0, 0, 0, 0, 0, 0, 0, 1, 0, -1}, material),
+                new Quadrik(new float[]{0, 0, 0, 0, 0, 0, 0, 0, -1, -1}, material),
+                new Quadrik(new float[]{0, 0, 0, 0, 0, 0, 0, 0, 1, -1}, material)
         );
 
-        SceneObject cube = faces.getFirst();
-        for (int i = 1; i < faces.size(); i++) {
-            cube = new IntersectionObject(cube, faces.get(i), material);
-        }
-
-        return cube;
+        return faces.stream().reduce((a, b) -> new IntersectionObject(a, b, material)).orElseThrow();
     }
 }

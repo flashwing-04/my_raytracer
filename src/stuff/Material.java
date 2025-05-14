@@ -1,17 +1,21 @@
 package stuff;
 
+import math.Vec3;
+
 public class Material {
 
     private Color albedo;
     private float roughness;
     private float metalness;
     private float transparency;
+    private Vec3 F0;
 
     public Material(Color albedo, float roughness, float metalness, float transparency) {
         this.albedo = albedo;
         this.roughness = roughness;
         this.metalness = metalness;
         this.transparency = transparency;
+        this.F0 = calculateF0(this);
     }
 
     public Color getAlbedo() {
@@ -27,4 +31,14 @@ public class Material {
     public float getTransparency() {
         return transparency;
     }
+
+    public Vec3 getF0() {
+        return F0;
+    }
+
+    private Vec3 calculateF0(Material material) {
+        Vec3 F0 = new Vec3(0.04f);          // default F0 for dielectric materials
+        return F0.mix(material.getAlbedo().getVector(), new Vec3(material.getMetalness()));
+    }
+
 }

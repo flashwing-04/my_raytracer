@@ -1,77 +1,40 @@
 package math.geometry.objects.csg;
 
-import math.*;
-import math.geometry.*;
-import math.geometry.objects.*;
-import stuff.*;
+import math.Mat4;
+import math.Vec3;
+import math.geometry.Intersection;
+import math.geometry.objects.SceneObject;
+import stuff.Material;
 
-import java.util.*;
 
-public class UnionObject extends SceneObject {
-
-    private SceneObject objA;
-    private SceneObject objB;
+public class UnionObject extends CSGObject {
 
     public UnionObject(SceneObject objA, SceneObject objB, Material material) {
-        super(material);
-        this.objA = objA;
-        this.objB = objB;
+        super(objA, objB, material);
     }
 
-    public List<Intersection> intersect(Ray ray) {
-        List<Intersection> intersectionsA = objA.intersect(ray);
-        List<Intersection> intersectionsB = objB.intersect(ray);
-
-        List<Intersection> combined = new ArrayList<>();
-        combined.addAll(intersectionsA);
-        combined.addAll(intersectionsB);
-
-        combined.sort(Comparator.comparingDouble(Intersection::getDistance));
-
-        return filterUnionIntervals(combined, ray);
+    @Override
+    protected boolean computeIsInside(boolean insideA, boolean insideB) {
+        return insideA || insideB;
     }
 
-    private List<Intersection> filterUnionIntervals(List<Intersection> intersections, Ray ray) {
-        List<Intersection> result = new ArrayList<>();
-
-        Vec3 startPoint = ray.getP().add(ray.getV().multiply(1e-5f));
-        boolean insideA = objA.isInside(startPoint);
-        boolean insideB = objB.isInside(startPoint);
-        boolean wasInside = insideA && insideB;
-
-        for (Intersection inter : intersections) {
-            if (inter.getDistance() < 1e-5f) continue;
-
-            SceneObject obj = inter.getObject();
-            if (obj == objA) insideA = !insideA;
-            else if (obj == objB) insideB = !insideB;
-
-            boolean isInside = insideA || insideB;
-            if (isInside != wasInside) {
-                result.add(new Intersection(
-                        inter.getPoint(),
-                        inter.getNormal(),
-                        inter.getDistance(),
-                        this
-                ));
-            }
-            wasInside = isInside;
-        }
-
-        return result;
+    @Override
+    protected boolean computeWasInside(boolean insideA, boolean insideB) {
+        return insideA || insideB;
     }
 
-    public Vec3 getNormal(Vec3 p) {
-        throw new UnsupportedOperationException("Use normal from Intersection instead.");
+    @Override
+    protected Vec3 getAdjustedNormal(Intersection inter, SceneObject obj) {
+        return inter.getNormal();
     }
 
+    @Override
     public boolean isInside(Vec3 point) {
         return objA.isInside(point) || objB.isInside(point);
     }
 
+    @Override
     public UnionObject transform(Mat4 transformMatrix) {
-        SceneObject transformedA = objA.transform(transformMatrix);
-        SceneObject transformedB = objB.transform(transformMatrix);
-        return new UnionObject(transformedA, transformedB, this.getMaterial());
+        return new UnionObject(objA.transform(transformMatrix), objB.transform(transformMatrix), getMaterial());
     }
 }

@@ -4,6 +4,9 @@ import math.*;
 
 public class Color {
 
+    public static final Color BLACK = new Color(0f, 0f, 0f);
+    public static final Color WHITE = new Color(1f, 1f, 1f);
+
     private float r, g, b;
 
     public Color(float r, float g, float b) {
@@ -40,11 +43,6 @@ public class Color {
         int rOut = (int)(Math.pow(clamp(r), 1.0 / 2.2) * 255);
         int gOut = (int)(Math.pow(clamp(g), 1.0 / 2.2) * 255);
         int bOut = (int)(Math.pow(clamp(b), 1.0 / 2.2) * 255);
-
-        //int rOut = (int) (r*255);
-        //int gOut = (int) (g*255);
-        //int bOut = (int) (b*255);
-
 
         return (rOut << 16) | (gOut << 8) | bOut;
     }
