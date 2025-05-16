@@ -3,6 +3,9 @@ import java.awt.image.DirectColorModel;
 import java.awt.image.MemoryImageSource;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.swing.*;
 
 import lighting.*;
@@ -21,8 +24,8 @@ public class MyRaytracer {
     private static final int RES_Y = 1024;
     private static final int[] pixels = new int[RES_X * RES_Y];
 
-    private static final int SOFT_SHADOW_SAMPLES = 1;
-    private static final float LIGHT_RADIUS = 0f;
+    private static final int SOFT_SHADOW_SAMPLES = 128;
+    private static final float LIGHT_RADIUS = 0.2f;
 
     private static final float EPSILON = 1e-4f;
     private static MemoryImageSource imageSource;
@@ -49,14 +52,29 @@ public class MyRaytracer {
         Vec3 stepRight = camera.getPxRightStep(RES_X);
         Vec3 stepUp = camera.getPxUpStep(RES_Y);
 
+        int threads = Runtime.getRuntime().availableProcessors();
+        ExecutorService executor = Executors.newFixedThreadPool(threads);
+
         for (int y = 0; y < RES_Y; ++y) {
-            for (int x = 0; x < RES_X; ++x) {
-                Vec3 pixelPos = pxStart.add(stepRight.multiply(x)).add(stepUp.multiply(y));
-                Ray ray = new Ray(camera.getPosition(), pixelPos.subtract(camera.getPosition()));
-                Color color = traceRay(ray, objects, lights, camera, 5);
-                pixels[y * RES_X + x] = color.toHex();
-            }
-            imageSource.newPixels();
+            final int row = y;
+            executor.submit(() -> {
+                for (int x = 0; x < RES_X; ++x) {
+                    Vec3 pixelPos = pxStart.add(stepRight.multiply(x)).add(stepUp.multiply(row));
+                    Ray ray = new Ray(camera.getPosition(), pixelPos.subtract(camera.getPosition()));
+                    Color color = traceRay(ray, objects, lights, camera, 5);
+                    pixels[row * RES_X + x] = color.toHex();
+                }
+                synchronized (imageSource) {
+                    imageSource.newPixels();
+                }
+            });
+        }
+
+        executor.shutdown();
+        try {
+            executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
     }
 
@@ -70,25 +88,27 @@ public class MyRaytracer {
         Material material = hitObject.getMaterial();
 
         List<Light> relevantLights = computeSoftShadows(nearestIntersection, lights, objects);
-
         LightingContext context = new LightingContext(relevantLights, hitObject, nearestIntersection, camera, Vec3.ZERO);
         Color localColor = cookTorranceLighting.getFinalColor(context);
 
 
+        Vec3 normal = nearestIntersection.getNormal();
         Vec3 viewDir = ray.getV().multiply(-1).normalize();
-        float cosTheta = Math.max(0f, nearestIntersection.getNormal().dot(viewDir));
-        float fresnel = material.getF0().getX() + (1 - material.getF0().getX()) * (float)Math.pow(1 - cosTheta, 5);
+
+        float cosTheta = Math.max(0f, normal.dot(viewDir));
+        float f0 = material.getF0().getX();
+        float fresnel = f0 + (1 - f0) * (float)Math.pow(1 - cosTheta, 5);
         float reflectivity = fresnel * (1 - material.getRoughness());
 
-        if (reflectivity >= 0.01f) {
-            Vec3 reflectionDir = ray.getV().reflect(nearestIntersection.getNormal());
-            Vec3 reflectionOrigin = nearestIntersection.getPoint().add(reflectionDir.multiply(EPSILON));
-            Color reflected = traceRay(new Ray(reflectionOrigin, reflectionDir), objects, lights, camera, depth - 1);
-            Vec3 blended = reflected.getVector().multiply(reflectivity).add(localColor.getVector().multiply(1 - reflectivity));
-            return new Color(blended);
-        }
+        if (reflectivity < 0.01f) return localColor;
 
-        return localColor;
+        // REFLECT
+        Vec3 reflectionDir = ray.getV().reflect(normal);
+        Ray reflectedRay = new Ray(nearestIntersection.getPoint().add(reflectionDir.multiply(EPSILON)), reflectionDir);
+        Color reflected = traceRay(reflectedRay, objects, lights, camera, depth - 1);
+
+        Vec3 blended = reflected.getVector().multiply(reflectivity).add(localColor.getVector().multiply(1 - reflectivity));
+        return new Color(blended);
     }
 
     private static Intersection getNearestIntersection(Ray ray, List<SceneObject> objects) {
@@ -98,7 +118,7 @@ public class MyRaytracer {
         for (SceneObject obj : objects) {
             for (Intersection inter : obj.intersect(ray)) {
                 float dist = inter.getDistance();
-                if (dist > 0 && dist < minDist) {
+                if (dist > EPSILON && dist < minDist) {
                     minDist = dist;
                     nearestIntersection = inter;
                 }
@@ -120,7 +140,14 @@ public class MyRaytracer {
                 float distance = toLight.getLength();
 
                 Ray shadowRay = new Ray(point.add(toLight.normalize().multiply(EPSILON)), toLight);
-                boolean occluded = objects.stream().anyMatch(obj -> obj.isOccluding(shadowRay, distance));
+                boolean occluded = false;
+
+                for (SceneObject obj : objects) {
+                    if (obj.isOccluding(shadowRay, distance)) {
+                        occluded = true;
+                        break;
+                    }
+                }
 
                 if (!occluded && light instanceof SpotLight spot && spot.getAttenuation(point) <= 0) {
                     occluded = true;

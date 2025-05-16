@@ -30,25 +30,27 @@ public class CookTorranceLighting extends LightingModel {
 
             float nh = Math.max(normal.dot(h), 0.0f);
             float nl = Math.max(normal.dot(lightDir), 0.0f);
+            if (nl <= 0) continue;  // light facing away
 
             float D = distributionGGX(nh, roughness);
             float G = geometrySmith(nv, nl, roughness);
 
-            Vec3 kSpecular = (F.multiply(D*G)).multiply(1.0f / (4.0f * nv * nl + 0.0001f));
+            final float denom = 4.0f * nv * nl + 1e-4f;
+            final Vec3 kSpecular = F.multiply(D * G / denom);
 
-            Vec3 kDiffuse = (new Vec3(1).subtract(kSpecular)).multiply(1.0f - metalness);
+            Vec3 kDiffuse =  Vec3.ONE.subtract(kSpecular).multiply(1.0f - metalness);
 
             float attenuation = 1f;
             if (light instanceof SpotLight spot) {
                 attenuation = spot.getAttenuation(point);
+                if (attenuation <= 0f) continue;
             }
 
             Vec3 contribution = (light.getColor().getVector().multiply(light.getIntensity() * nl * attenuation)).multiply(kDiffuse.multiply(albedo).add(kSpecular));
             finalColor = finalColor.add(contribution);
         }
 
-        finalColor = finalColor.add(ctx.ambient);
-        return finalColor;
+        return finalColor.add(ctx.ambient);
     }
 
     private float distributionGGX(float nh, float roughness){

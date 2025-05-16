@@ -3,6 +3,7 @@ package math;
 public class Vec3 {
 
     public static final Vec3 ZERO = new Vec3(0f, 0f, 0f);
+    public static final Vec3 ONE = new Vec3(1f, 1f, 1f);
 
     private final float x;
     private final float y;
