@@ -10,4 +10,5 @@ public abstract class LightingModel {
   
     public Color getFinalColor(LightingContext ctx) {
         return new Color(computeLight(ctx));
+    }
 }

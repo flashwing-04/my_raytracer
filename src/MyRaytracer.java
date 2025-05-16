@@ -56,6 +56,7 @@ public class MyRaytracer {
                 Color color = traceRay(ray, objects, lights, camera, 5);
                 pixels[y * RES_X + x] = color.toHex();
             }
+            imageSource.newPixels();
         }
     }
 
@@ -178,8 +179,8 @@ public class MyRaytracer {
     private static List<SceneObject> getCSG() {
         List<SceneObject> objects = new ArrayList<>();
 
-        Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.9f, 0.01f, 0);
-        Material greenish = new Material(new Color(0.4f, 0.9f, 0.6f), 0.2f, 0.7f, 0);
+        Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.9f, 0.01f, 0, 1);
+        Material greenish = new Material(new Color(0.4f, 0.9f, 0.6f), 0.2f, 0.7f, 0, 1);
 
         objects.add(new Area(new Vec3(0, 1, 0), -1, redish));
 

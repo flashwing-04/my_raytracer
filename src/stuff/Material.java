@@ -8,13 +8,15 @@ public class Material {
     private float roughness;
     private float metalness;
     private float transparency;
+    private float ior;
     private Vec3 F0;
 
-    public Material(Color albedo, float roughness, float metalness, float transparency) {
+    public Material(Color albedo, float roughness, float metalness, float transparency, float ior) {
         this.albedo = albedo;
         this.roughness = roughness;
         this.metalness = metalness;
         this.transparency = transparency;
+        this.ior = ior;
         this.F0 = calculateF0(this);
     }
 
@@ -30,6 +32,10 @@ public class Material {
 
     public float getTransparency() {
         return transparency;
+    }
+
+    public float getIor() {
+        return ior;
     }
 
     public Vec3 getF0() {
