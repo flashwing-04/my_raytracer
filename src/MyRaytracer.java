@@ -24,8 +24,8 @@ public class MyRaytracer {
     private static final int RES_Y = 1024;
     private static final int[] pixels = new int[RES_X * RES_Y];
 
-    private static final int SOFT_SHADOW_SAMPLES = 128;
-    private static final float LIGHT_RADIUS = 0.2f;
+    private static final int SOFT_SHADOW_SAMPLES = 1;
+    private static final float LIGHT_RADIUS = 0f;
 
     private static final float EPSILON = 1e-4f;
     private static MemoryImageSource imageSource;
@@ -54,6 +54,8 @@ public class MyRaytracer {
 
         int threads = Runtime.getRuntime().availableProcessors();
         ExecutorService executor = Executors.newFixedThreadPool(threads);
+
+        float startimgIOR = getStartingIOR(camera.getPosition(), objects);
 
         for (int y = 0; y < RES_Y; ++y) {
             final int row = y;
@@ -105,10 +107,12 @@ public class MyRaytracer {
         // REFLECT
         Vec3 reflectionDir = ray.getV().reflect(normal);
         Ray reflectedRay = new Ray(nearestIntersection.getPoint().add(reflectionDir.multiply(EPSILON)), reflectionDir);
-        Color reflected = traceRay(reflectedRay, objects, lights, camera, depth - 1);
+        Color reflectedColor = traceRay(reflectedRay, objects, lights, camera, depth - 1);
 
-        Vec3 blended = reflected.getVector().multiply(reflectivity).add(localColor.getVector().multiply(1 - reflectivity));
-        return new Color(blended);
+        Vec3 finalColor = localColor.getVector().multiply(1 - reflectivity)
+                .add(reflectedColor.getVector().multiply(reflectivity));
+
+        return new Color(finalColor);
     }
 
     private static Intersection getNearestIntersection(Ray ray, List<SceneObject> objects) {
@@ -183,6 +187,26 @@ public class MyRaytracer {
         return new Vec3((float)(r * Math.cos(theta)), (float)(r * Math.sin(theta)), 0f);
     }
 
+    private static float getStartingIOR(Vec3 point, List<SceneObject> objects) {
+        Vec3 testRayDir = new Vec3(0, 0, -1);
+        float minDistanceToSurface = Float.MAX_VALUE;
+        float ior = 1.0f; // air by default
+
+        for (SceneObject obj : objects) {
+            List<Intersection> intersections = obj.intersect(new Ray(point, testRayDir));
+
+            for (Intersection inter : intersections) {
+                float dist = inter.getDistance();
+                if (dist < minDistanceToSurface) {
+                    minDistanceToSurface = dist;
+                    ior = inter.getObject().getMaterial().getIor();
+                }
+            }
+        }
+
+        return ior;
+    }
+
     private static void setUpWindow() {
         imageSource = new MemoryImageSource(RES_X, RES_Y, new DirectColorModel(24, 0xff0000, 0xff00, 0xff), pixels, 0, RES_X);
         imageSource.setAnimated(true);
@@ -198,8 +222,8 @@ public class MyRaytracer {
     private static List<Light> getLights() {
         return Arrays.asList(
                 new SpotLight(new Vec3(0, 0, 3), 1f, Color.WHITE, new Vec3(0, 0, -1), (float) Math.toRadians(15), 1f),
-                new Light(new Vec3(1, 1, 2), 1f, Color.WHITE),
-                new Light(new Vec3(-3, 0, 0), 1f, Color.WHITE)
+                new Light(new Vec3(1, 1, 2), 1f, Color.WHITE)
+                //new Light(new Vec3(0, 2, -4), 1f, Color.WHITE)
         );
     }
 
@@ -207,7 +231,7 @@ public class MyRaytracer {
         List<SceneObject> objects = new ArrayList<>();
 
         Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.9f, 0.01f, 0, 1);
-        Material greenish = new Material(new Color(0.4f, 0.9f, 0.6f), 0.2f, 0.7f, 0, 1);
+        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.2f, 0.99f, 0, 1);
 
         objects.add(new Area(new Vec3(0, 1, 0), -1, redish));
 
@@ -222,6 +246,10 @@ public class MyRaytracer {
         SceneObject greenSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, greenish)
                 .transform(transform);
 
+        SceneObject greenSphere2 = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, greenish)
+                .transform(new Mat4().translate(-0.5f,-0.5f,-2));
+
+        objects.add(greenSphere2);
         objects.add(csgShape);
         objects.add(greenSphere);
 
