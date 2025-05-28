@@ -13,12 +13,14 @@ public class LightingContext {
     public final Intersection intersection;
     public final Camera camera;
     public final Vec3 ambient;
+    public final float currentIor;
 
-    public LightingContext(List<Light> lights, SceneObject object, Intersection intersection, Camera camera, Vec3 ambient) {
+    public LightingContext(List<Light> lights, SceneObject object, Intersection intersection, Camera camera, Vec3 ambient, float currentIor) {
         this.lights = lights;
         this.object = object;
         this.intersection = intersection;
         this.camera = camera;
         this.ambient = ambient;
+        this.currentIor = currentIor;
     }
 }

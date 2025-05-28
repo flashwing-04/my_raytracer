@@ -20,12 +20,14 @@ public class Area extends SceneObject{
     public List<Intersection> intersect(Ray ray) {
         List<Intersection> intersections = new ArrayList<>();
 
-        float dot = normal.dot(ray.getV());
-        if(dot != 0) {
-            float s = (d-dot)/dot;
-            Vec3 point = ray.getPoint(s);
+        float denom = normal.dot(ray.getV());
+        if (Math.abs(denom) > 1e-4f) {
+            float t = (d - normal.dot(ray.getP())) / denom;
 
-            intersections.add(new Intersection(point, normal, s, this));
+            if (t >= 0) {
+                Vec3 point = ray.getPoint(t);
+                intersections.add(new Intersection(point, normal, t, this));
+            }
         }
 
         return intersections;

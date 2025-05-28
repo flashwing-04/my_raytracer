@@ -78,7 +78,19 @@ public class Vec3 {
     }
 
     public Vec3 reflect(Vec3 normal) {
-        return this.subtract(normal.multiply(2 * normal.dot(this)));
+        return this.subtract(normal.multiply(2 * normal.dot(this))).normalize();
+    }
+
+    public Vec3 refract(Vec3 normal, float i1, float i2) {
+        float cosW1 = -this.dot(normal);
+        float i = i1/i2;
+
+        float radical = 1 - i * i * (1 - cosW1 * cosW1);
+
+        if(radical < 0f) return null;
+
+        float cosW2 = (float) Math.sqrt(radical);
+        return this.multiply(i).add(normal.multiply(i * cosW1 - cosW2)).normalize();
     }
 
     public float getLength() {

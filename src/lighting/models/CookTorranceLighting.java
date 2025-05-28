@@ -19,10 +19,17 @@ public class CookTorranceLighting extends LightingModel {
         float roughness = material.getRoughness();
         float metalness = material.getMetalness();
 
+        boolean entering = -view.dot(normal) > 0;
+        float iorFrom = entering ? ctx.currentIor : material.getIor();
+        float iorTo = entering ? material.getIor() : ctx.currentIor;
+        Vec3 refractionNormal = entering ? normal : normal.multiply(-1);
+
         Vec3 finalColor = Vec3.ZERO;
 
         float nv = Math.max(normal.dot(view), 0.0f);
-        Vec3 F = fresnelSchlick(nv, material);
+
+        //Vec3 F = fresnelSchlick(nv, material);
+        Vec3 F = new Vec3(calculateFresnel(view, refractionNormal, iorFrom, iorTo));
 
         for( Light light : ctx.lights) {
             Vec3 lightDir = (light.getP().subtract(point)).normalize();
@@ -61,6 +68,29 @@ public class CookTorranceLighting extends LightingModel {
         denominator = ((float) Math.PI) * denominator * denominator;
 
         return r2 / denominator;
+    }
+
+    public float calculateFresnel(Vec3 viewDir, Vec3 normal, float IorFrom, float IorTo){
+        float cosW1 = -viewDir.dot(normal);
+        float i = IorFrom/IorTo;
+
+        float radical = 1.0f - (i * i *(1 - cosW1 * cosW1));
+
+        if (radical < 0f) {
+            return 1.0f;    //total inner reflection
+        }
+
+        float cosW2 = (float) Math.sqrt(radical);
+
+        float FsNum = IorFrom * cosW1 - IorTo * cosW2;
+        float FsDen = IorFrom * cosW1 + IorTo * cosW2;
+        float Fs = (FsNum / FsDen) * (FsNum / FsDen);
+
+        float FpNum = IorTo * cosW1 - IorFrom * cosW2;
+        float FpDen = IorTo * cosW1 + IorFrom * cosW2;
+        float Fp = (FpNum / FpDen) * (FpNum/ FpDen);
+
+        return (Fs + Fp) / 2.0f;
     }
 
     private Vec3 fresnelSchlick(float cosTheta, Material material) {
