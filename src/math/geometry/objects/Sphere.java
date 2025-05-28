@@ -74,8 +74,11 @@ public class Sphere extends SceneObject {
         return distanceSquared < radius * radius;
     }
 
-    public Sphere transform(Mat4 transformMatrix) {
-        Vec3 transformedCenter = transformMatrix.transform(center);
-        return new Sphere(transformedCenter, radius, this.getMaterial());
+    public SceneObject transform(Mat4 transformMatrix) {
+        float cx = center.getX(); float cy = center.getY(); float cz = center.getZ();
+        float r2 = radius * radius;
+        float[] coeffs = new float[]{1, 1, 1, 0, 0, 0, -cx, -cy, -cz, cx*cx + cy*cy + cz*cz - r2};
+
+        return new Quadrik(coeffs, this.getMaterial()).transform(transformMatrix);
     }
 }
