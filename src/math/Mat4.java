@@ -33,6 +33,20 @@ public class Mat4 {
         return new Mat4(result);
     }
 
+    public Vec3 multiply(Vec3 v, float w) {
+        float[] mv = this.getValues();
+        float x = v.getX(), y = v.getY(), z = v.getZ();
+        float nx = mv[0]*x + mv[1]*y + mv[2]*z + mv[3]*w;
+        float ny = mv[4]*x + mv[5]*y + mv[6]*z + mv[7]*w;
+        float nz = mv[8]*x + mv[9]*y + mv[10]*z + mv[11]*w;
+        float nw = mv[12]*x + mv[13]*y + mv[14]*z + mv[15]*w;
+        if (w == 1.0f && nw != 0.0f) {
+            return new Vec3(nx / nw, ny / nw, nz / nw);
+        } else {
+            return new Vec3(nx, ny, nz);
+        }
+    }
+
     public Mat4 transpose() {
         float[] transposed = new float[16];
         for (int i = 0; i < 4; i++) {
