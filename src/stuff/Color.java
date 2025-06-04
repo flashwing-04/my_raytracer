@@ -50,4 +50,10 @@ public class Color {
     public Vec3 getVector() {
         return new Vec3(r, g, b);
     }
+
+    public boolean similar(Color other, float threshold) {
+        Vec3 v1 = this.getVector();
+        Vec3 v2 = other.getVector();
+        return v1.subtract(v2).getLength() < threshold;
+    }
 }
