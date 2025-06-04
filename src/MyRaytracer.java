@@ -24,11 +24,14 @@ public class MyRaytracer {
     private static final int RES_Y = 1024;
     private static final int[] pixels = new int[RES_X * RES_Y];
 
+    private static final float EPSILON = 1e-4f;
+    private static MemoryImageSource imageSource;
+
     private static final int SOFT_SHADOW_SAMPLES = 1;
     private static final float LIGHT_RADIUS = 0f;
 
-    private static final float EPSILON = 1e-4f;
-    private static MemoryImageSource imageSource;
+    private static final int MAX_SUPERSAMPLING_DEPTH = 4;
+    private static final float COLOR_THRESHOLD = 0.02f;
 
     private static final CookTorranceLighting cookTorranceLighting = new CookTorranceLighting();
 
@@ -40,7 +43,7 @@ public class MyRaytracer {
         Vec3 imgPlaneR = new Vec3(1, 0, 0);
         Camera camera = new Camera(cameraPos,cameraV, imgPlaneR, 2, 2, 1);
 
-        List<SceneObject> sceneObjects = getCSG();
+        List<SceneObject> sceneObjects = getCSG2();
         List<Light> lights = getLights();
 
         renderScene(camera, sceneObjects, lights);
@@ -61,9 +64,8 @@ public class MyRaytracer {
             final int row = y;
             executor.submit(() -> {
                 for (int x = 0; x < RES_X; ++x) {
-                    Vec3 pixelPos = pxStart.add(stepRight.multiply(x)).add(stepUp.multiply(row));
-                    Ray ray = new Ray(camera.getPosition(), pixelPos.subtract(camera.getPosition()));
-                    Color color = traceRay(ray, objects, lights, camera, startingIOR, 7);
+                    Vec3 pixelTopLeft = pxStart.add(stepRight.multiply(x)).add(stepUp.multiply(row));
+                    Color color = adaptiveSample(camera, pixelTopLeft, stepRight, stepUp, 0, objects, lights, startingIOR);
                     pixels[row * RES_X + x] = color.toHex();
                 }
                 synchronized (imageSource) {
@@ -76,6 +78,48 @@ public class MyRaytracer {
             executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
         } catch (InterruptedException e) {
             e.printStackTrace();
+        }
+    }
+
+    private static Color adaptiveSample(Camera camera, Vec3 topLeft, Vec3 stepX, Vec3 stepY, int depth, List<SceneObject> objects, List<Light> lights, float ior) {
+        Vec3[] positions = new Vec3[4];
+        positions[0] = topLeft;
+        positions[1] = topLeft.add(stepX);
+        positions[2] = topLeft.add(stepX).add(stepY);
+        positions[3] = topLeft.add(stepY);
+
+        Color[] colors = new Color[4];
+        for (int i = 0; i < 4; i++) {
+            Ray ray = new Ray(camera.getPosition(), positions[i].subtract(camera.getPosition()));
+            colors[i] = traceRay(ray, objects, lights, camera, ior, 7);
+        }
+
+        boolean similar = true;
+        for (int i = 0; i < 4 && similar; i++) {
+            for (int j = i + 1; j < 4 && similar; j++) {
+                if (!colors[i].similar(colors[j], COLOR_THRESHOLD)) {
+                    similar = false;
+                }
+            }
+        }
+
+        if (similar || depth >= MAX_SUPERSAMPLING_DEPTH) {
+            Vec3 finalColor = Vec3.ZERO;
+            for (Color c : colors) {
+                finalColor = finalColor.add(c.getVector());
+            }
+            return new Color(finalColor.divide(4f));
+        } else {
+            Vec3 halfX = stepX.multiply(0.5f);
+            Vec3 halfY = stepY.multiply(0.5f);
+
+            Color c1 = adaptiveSample(camera, topLeft, halfX, halfY, depth + 1, objects, lights, ior);
+            Color c2 = adaptiveSample(camera, topLeft.add(halfX), halfX, halfY, depth + 1, objects, lights, ior);
+            Color c3 = adaptiveSample(camera, topLeft.add(halfX).add(halfY), halfX, halfY, depth + 1, objects, lights, ior);
+            Color c4 = adaptiveSample(camera, topLeft.add(halfY), halfX, halfY, depth + 1, objects, lights, ior);
+
+            Vec3 avg = c1.getVector().add(c2.getVector()).add(c3.getVector()).add(c4.getVector()).divide(4f);
+            return new Color(avg);
         }
     }
 
@@ -112,7 +156,7 @@ public class MyRaytracer {
         Color refractedColor = Color.BLACK;
         if (refractionDir != null) {
             Ray refractedRay = new Ray(nearestIntersection.getPoint().subtract(refractionNormal.multiply(EPSILON)), refractionDir);
-            refractedColor = traceRay(refractedRay, objects, lights, camera, iorFrom, depth - 1);   //TODO: iorTO oder From
+            refractedColor = traceRay(refractedRay, objects, lights, camera, iorFrom, depth - 1);
         }
 
 
