@@ -9,32 +9,23 @@ import stuff.Material;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SuperEllipsoid extends SceneObject{
+public class Torus extends SceneObject {
+    private float majorRadius;
+    private float minorRadius;
+    private Mat4 transform, inverseTransform;
 
-    private float a1, a2, a3; // xRadius, yRadius, zRadius
-    private float e1, e2;
-
-    private Mat4 transform;
-    private Mat4 inverseTransform;
-
-    public SuperEllipsoid(float a1, float a2, float a3, float e1, float e2, Material material) {
+    public Torus(float majorRadius, float minorRadius, Material material) {
         super(material);
-        this.a1 = a1;
-        this.a2 = a2;
-        this.a3 = a3;
-        this.e1 = e1;
-        this.e2 = e2;
+        this.majorRadius = majorRadius;
+        this.minorRadius = minorRadius;
         this.transform = new Mat4();
         this.inverseTransform = new Mat4().inverse();
     }
 
-    public SuperEllipsoid(float a1, float a2, float a3, float e1, float e2, Mat4 transform, Material material) {
+    public Torus(float majorRadius, float minorRadius, Mat4 transform, Material material) {
         super(material);
-        this.a1 = a1;
-        this.a2 = a2;
-        this.a3 = a3;
-        this.e1 = e1;
-        this.e2 = e2;
+        this.majorRadius = majorRadius;
+        this.minorRadius = minorRadius;
         this.transform = transform;
         this.inverseTransform = transform.inverse();
     }
@@ -62,16 +53,16 @@ public class SuperEllipsoid extends SceneObject{
             if (t > maxDistance) break;
             t += distance * 0.8f;
         }
-
         return intersections;
     }
 
     private float estimateDistance(Vec3 p) {
-        float x = Math.abs(p.getX() / a1);
-        float y = Math.abs(p.getY() / a2);
-        float z = Math.abs(p.getZ() / a3);
-
-        return (float) Math.pow( Math.pow(Math.pow(x, 2.0f/e2) + Math.pow(y, 2.0f/e2), e2/e1) + Math.pow(z, 2.0f/e1), e1/2.0f) - 1.0f;
+        float x = p.getX();
+        float y = p.getY();
+        float z = p.getZ();
+        float qx = (float)Math.sqrt(x * x + z * z) - majorRadius;
+        float qy = y;
+        return (float)Math.sqrt(qx * qx + qy * qy) - minorRadius;
     }
 
     public Vec3 getNormal(Vec3 p) {
@@ -90,6 +81,6 @@ public class SuperEllipsoid extends SceneObject{
 
     public SceneObject transform(Mat4 transformationMatrix) {
         Mat4 newTransform = transformationMatrix.multiply(this.transform);
-        return new SuperEllipsoid(a1, a2, a3, e1, e2, newTransform, getMaterial());
+        return new Torus(majorRadius, minorRadius, newTransform, getMaterial());
     }
 }

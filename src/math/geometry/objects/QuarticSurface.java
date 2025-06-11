@@ -9,32 +9,23 @@ import stuff.Material;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SuperEllipsoid extends SceneObject{
+public class QuarticSurface extends SceneObject{
 
-    private float a1, a2, a3; // xRadius, yRadius, zRadius
-    private float e1, e2;
+    private float b, c;
+    private Mat4 transform, inverseTransform;
 
-    private Mat4 transform;
-    private Mat4 inverseTransform;
-
-    public SuperEllipsoid(float a1, float a2, float a3, float e1, float e2, Material material) {
+    public QuarticSurface(float b, float c, Material material) {
         super(material);
-        this.a1 = a1;
-        this.a2 = a2;
-        this.a3 = a3;
-        this.e1 = e1;
-        this.e2 = e2;
+        this.b = b;
+        this.c = c;
         this.transform = new Mat4();
         this.inverseTransform = new Mat4().inverse();
     }
 
-    public SuperEllipsoid(float a1, float a2, float a3, float e1, float e2, Mat4 transform, Material material) {
+    public QuarticSurface(float b, float c, Mat4 transform, Material material) {
         super(material);
-        this.a1 = a1;
-        this.a2 = a2;
-        this.a3 = a3;
-        this.e1 = e1;
-        this.e2 = e2;
+        this.b = b;
+        this.c = c;
         this.transform = transform;
         this.inverseTransform = transform.inverse();
     }
@@ -46,7 +37,7 @@ public class SuperEllipsoid extends SceneObject{
         float t = 0f;
         float maxDistance = 100f;
         float epsilon = 1e-4f;
-        int maxSteps = 256;
+        int maxSteps = 1024;
 
         for (int i = 0; i < maxSteps; i++) {
             Vec3 point = localRay.getPoint(t);
@@ -60,19 +51,29 @@ public class SuperEllipsoid extends SceneObject{
             }
 
             if (t > maxDistance) break;
-            t += distance * 0.8f;
+            t += distance * 0.2f;
         }
 
         return intersections;
     }
 
-    private float estimateDistance(Vec3 p) {
-        float x = Math.abs(p.getX() / a1);
-        float y = Math.abs(p.getY() / a2);
-        float z = Math.abs(p.getZ() / a3);
+    public float estimateDistance(Vec3 p) {
+        float x = p.getX(), y = p.getY(), z = p.getZ();
+        float x2 = x * x, y2 = y * y, z2 = z * z;
+        float x4 = x2 * x2, y4 = y2 * y2, z4 = z2 * z2;
 
-        return (float) Math.pow( Math.pow(Math.pow(x, 2.0f/e2) + Math.pow(y, 2.0f/e2), e2/e1) + Math.pow(z, 2.0f/e1), e1/2.0f) - 1.0f;
+        float f = x4 + y4 + z4 + b * (x2 + y2 + z2) + c;
+
+        float dfdx = 4f * x * x * x + 2f * b * x;
+        float dfdy = 4f * y * y * y + 2f * b * y;
+        float dfdz = 4f * z * z * z + 2f * b * z;
+
+        float gradLength = (float)Math.sqrt(dfdx * dfdx + dfdy * dfdy + dfdz * dfdz);
+        if (gradLength < 1e-6f) gradLength = 1e-6f;
+
+        return f / gradLength;
     }
+
 
     public Vec3 getNormal(Vec3 p) {
         float eps = 1e-4f;
@@ -85,11 +86,13 @@ public class SuperEllipsoid extends SceneObject{
     }
 
     public boolean isInside(Vec3 point) {
-        return estimateDistance(point) < 0.0f;
+        float x = point.getX(), y = point.getY(), z = point.getZ();
+        float f = (float)(Math.pow(x, 4) + Math.pow(y, 4) + Math.pow(z, 4) + b * (x*x + y*y + z*z) + c);
+        return f < 0f;
     }
 
     public SceneObject transform(Mat4 transformationMatrix) {
         Mat4 newTransform = transformationMatrix.multiply(this.transform);
-        return new SuperEllipsoid(a1, a2, a3, e1, e2, newTransform, getMaterial());
+        return new QuarticSurface(b, c, newTransform, getMaterial());
     }
 }
