@@ -1,34 +1,26 @@
-package math.geometry.objects;
+package math.geometry.objects.sdf;
 
 import math.Mat4;
 import math.Vec3;
 import math.geometry.Intersection;
 import math.geometry.Ray;
+import math.geometry.objects.SceneObject;
 import stuff.Material;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class Torus extends SceneObject {
-    private float majorRadius;
-    private float minorRadius;
-    private Mat4 transform, inverseTransform;
+public abstract class SDFObject extends SceneObject {
 
-    public Torus(float majorRadius, float minorRadius, Material material) {
-        super(material);
-        this.majorRadius = majorRadius;
-        this.minorRadius = minorRadius;
-        this.transform = new Mat4();
-        this.inverseTransform = new Mat4().inverse();
-    }
+    protected Mat4 transform, inverseTransform;
 
-    public Torus(float majorRadius, float minorRadius, Mat4 transform, Material material) {
+    public SDFObject(Material material, Mat4 transform) {
         super(material);
-        this.majorRadius = majorRadius;
-        this.minorRadius = minorRadius;
         this.transform = transform;
         this.inverseTransform = transform.inverse();
     }
+
+    public abstract float estimateDistance(Vec3 point);
 
     public List<Intersection> intersect(Ray ray) {
         List<Intersection> intersections = new ArrayList<>();
@@ -37,7 +29,7 @@ public class Torus extends SceneObject {
         float t = 0f;
         float maxDistance = 100f;
         float epsilon = 1e-4f;
-        int maxSteps = 256;
+        int maxSteps = 1024;
 
         for (int i = 0; i < maxSteps; i++) {
             Vec3 point = localRay.getPoint(t);
@@ -51,18 +43,10 @@ public class Torus extends SceneObject {
             }
 
             if (t > maxDistance) break;
-            t += distance * 0.8f;
+            t += distance * 0.2f;
         }
-        return intersections;
-    }
 
-    private float estimateDistance(Vec3 p) {
-        float x = p.getX();
-        float y = p.getY();
-        float z = p.getZ();
-        float qx = (float)Math.sqrt(x * x + z * z) - majorRadius;
-        float qy = y;
-        return (float)Math.sqrt(qx * qx + qy * qy) - minorRadius;
+        return intersections;
     }
 
     public Vec3 getNormal(Vec3 p) {
@@ -75,12 +59,8 @@ public class Torus extends SceneObject {
         return normalMatrix.multiply(localNormal, 0).normalize();
     }
 
-    public boolean isInside(Vec3 point) {
-        return estimateDistance(point) < 0.0f;
-    }
+    public abstract boolean isInside(Vec3 point);
 
-    public SceneObject transform(Mat4 transformationMatrix) {
-        Mat4 newTransform = transformationMatrix.multiply(this.transform);
-        return new Torus(majorRadius, minorRadius, newTransform, getMaterial());
-    }
+    public abstract SceneObject transform(Mat4 transformationMatrix);
+
 }

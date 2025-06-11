@@ -18,6 +18,9 @@ import math.*;
 import math.geometry.*;
 import math.geometry.objects.*;
 import math.geometry.objects.csg.*;
+import math.geometry.objects.sdf.QuarticSurface;
+import math.geometry.objects.sdf.SuperEllipsoid;
+import math.geometry.objects.sdf.Torus;
 import scene.*;
 import stuff.*;
 import stuff.Color;
@@ -28,8 +31,8 @@ public class MyRaytracer {
     private static final int RES_Y = 1024;
     private static final int[] pixels = new int[RES_X * RES_Y];
 
-    private static final int SOFT_SHADOW_SAMPLES = 256;
-    private static final float LIGHT_RADIUS = 0.2f;
+    private static final int SOFT_SHADOW_SAMPLES = 1;
+    private static final float LIGHT_RADIUS = 0f;
 
     private static final float EPSILON = 1e-4f;
     private static MemoryImageSource imageSource;
@@ -329,7 +332,7 @@ public class MyRaytracer {
         SceneObject innerSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, air)
                 .transform(new Mat4().translate(0f,0f,-3f));
 
-        //SceneObject superE = new SuperEllipsoid(1, 1, 1, 1, 1, redish).transform(transform);
+        SceneObject superE = new SuperEllipsoid(1, 1, 1, 1, 1, redish).transform(transform);
 
         SceneObject torus = new Torus(2, 1, redish).transform(transform);
 
@@ -338,7 +341,7 @@ public class MyRaytracer {
         //objects.add(cube);
         //objects.add(greenSphere);
         //objects.add(d);
-        objects.add(specialQ);
+        objects.add(torus);
 
         return objects;
     }
