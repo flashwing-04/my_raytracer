@@ -60,7 +60,7 @@ public class CookTorranceLighting extends LightingModel {
         return finalColor.add(ctx.ambient);
     }
 
-    private float distributionGGX(float nh, float roughness){
+    public float distributionGGX(float nh, float roughness){
         float r2 = roughness * roughness;
         float nh2 = nh * nh;
 

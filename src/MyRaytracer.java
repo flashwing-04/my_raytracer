@@ -211,12 +211,31 @@ public class MyRaytracer {
         }
         Color totalLocalColor = new Color(localColor.getVector().add(indirect));
 
-        // REFLECT
-        Vec3 reflectionDir = viewDir.reflect(normal);
-        Ray reflectedRay = new Ray(hitPoint.add(normal.multiply(EPSILON)), reflectionDir);
-        Stack<Float> reflectionIorStack = new Stack<>();
-        reflectionIorStack.addAll(iorStack);
-        Color reflectedColor = traceRay(reflectedRay, objects, lights, camera, reflectionIorStack, depth - 1);
+        // REFLECT (Path tracing)
+        Color reflectedColor = Color.BLACK;
+        if (PATH_TRACING_SAMPLES > 0) {
+            int reflectionSamples = (material.getRoughness() < 0.05f) ? 1 : PATH_TRACING_SAMPLES;
+            Vec3 reflectionDir = viewDir.reflect(normal);
+            Vec3 glossySum = Vec3.ZERO;
+
+            for (int i = 0; i < reflectionSamples; i++) {
+                Vec3 sampledDir = (material.getRoughness() < 0.05f)
+                        ? reflectionDir
+                        : sampleGlossyDirection(reflectionDir, normal, material.getRoughness());
+
+                Ray glossyRay = new Ray(hitPoint.add(normal.multiply(EPSILON)), sampledDir);
+                Stack<Float> glossyIorStack = new Stack<>();
+                glossyIorStack.addAll(iorStack);
+
+                Color bounceColor = traceRay(glossyRay, objects, lights, camera, glossyIorStack, depth - 1);
+
+                // weight by cosine for energy conservation
+                float cosTheta = Math.max(0.0f, normal.dot(sampledDir));
+                glossySum = glossySum.add(bounceColor.getVector().multiply(cosTheta));
+            }
+            glossySum = glossySum.divide(reflectionSamples);
+            reflectedColor = new Color(glossySum);
+        }
 
         // REFRACT
         boolean entering = -viewDir.dot(normal) > 0;
@@ -266,6 +285,29 @@ public class MyRaytracer {
 
         return new Color(finalColor);
     }
+
+    private static Vec3 sampleGlossyDirection(Vec3 reflectionDir, Vec3 normal, float roughness) {
+        // roughness [0,1] to Phong exponent [100,1]
+        float exponent = Math.max(1.0f, (1.0f - roughness) * 100.0f);
+
+        float u1 = (float)Math.random();
+        float u2 = (float)Math.random();
+        float theta = (float)Math.acos(Math.pow(u1, 1.0f / (exponent + 1)));
+        float phi = 2.0f * (float)Math.PI * u2;
+
+        float x = (float)(Math.sin(theta) * Math.cos(phi));
+        float y = (float)(Math.sin(theta) * Math.sin(phi));
+        float z = (float)Math.cos(theta);
+
+        // Build orthonormal basis around reflectionDir
+        Vec3 w = reflectionDir.normalize();
+        Vec3 u = (Math.abs(w.getX()) > 0.1f ? new Vec3(0,1,0) : new Vec3(1,0,0)).cross(w).normalize();
+        Vec3 v = w.cross(u);
+
+        Vec3 sampleDir = u.multiply(x).add(v.multiply(y)).add(w.multiply(z));
+        return sampleDir.normalize();
+    }
+
 
     //PDF: Probability Density Function (how likely it is to sample a particular direction when generating random rays)
     private static float pdfCosine(Vec3 normal, Vec3 dir) {
@@ -413,7 +455,7 @@ public class MyRaytracer {
         List<SceneObject> objects = new ArrayList<>();
 
         Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.9f, 0.01f, 0, 1f);
-        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.2f, 0.01f, 1f, 1.5f);
+        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.04f, 0.01f, 1f, 1.5f);
         Material air = new Material(new Color(1f, 1f, 1f), 0.01f, 0.01f, 1f, 1f);
 
         objects.add(new Area(new Vec3(0, 1, 0), -1f, redish));
@@ -433,7 +475,7 @@ public class MyRaytracer {
         SceneObject d = new DifferenceObject(greenSphere, greenSphereI, greenish).transform(transform);
 
         SceneObject greenSphere2 = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, greenish);
-        SceneObject greenSphere2I = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, air);
+        SceneObject greenSphere2I = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.1f}, air);
 
         SceneObject d2 = new DifferenceObject(greenSphere2, greenSphere2I, greenish).transform(new Mat4().translate(-0.5f,-0.5f,-2));;
         objects.add(d2);
