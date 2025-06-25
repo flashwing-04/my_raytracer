@@ -30,7 +30,7 @@ public class CookTorranceLighting extends LightingModel {
 
         //Vec3 F = fresnelSchlick(nv, material);
         Vec3 F = new Vec3(calculateFresnel(view, refractionNormal, iorFrom, iorTo));
-
+        //TODO: evt. float fresnel * F0 instead
         for( Light light : ctx.lights) {
             Vec3 lightDir = (light.getP().subtract(point)).normalize();
             Vec3 h = view.add(lightDir).normalize();
@@ -60,7 +60,7 @@ public class CookTorranceLighting extends LightingModel {
         return finalColor.add(ctx.ambient);
     }
 
-    private float distributionGGX(float nh, float roughness){
+    public float distributionGGX(float nh, float roughness){
         float r2 = roughness * roughness;
         float nh2 = nh * nh;
 
@@ -72,6 +72,8 @@ public class CookTorranceLighting extends LightingModel {
 
     public float calculateFresnel(Vec3 viewDir, Vec3 normal, float IorFrom, float IorTo){
         float cosW1 = -viewDir.dot(normal);
+        cosW1 = Math.min(1.0f, Math.max(-1.0f, cosW1));
+
         float i = IorFrom/IorTo;
 
         float radical = 1.0f - (i * i *(1 - cosW1 * cosW1));

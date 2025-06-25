@@ -30,7 +30,9 @@ public class MyRaytracer {
     private static final int SOFT_SHADOW_SAMPLES = 1;
     private static final float LIGHT_RADIUS = 0f;
 
-    private static final int MAX_SUPERSAMPLING_DEPTH = 4;
+    private static final int PATH_TRACING_SAMPLES = 1;
+
+    private static final int MAX_SUPERSAMPLING_DEPTH = 0;
     private static final float COLOR_THRESHOLD = 0.02f;
 
     private static final CookTorranceLighting cookTorranceLighting = new CookTorranceLighting();
@@ -38,12 +40,12 @@ public class MyRaytracer {
     public static void main(String[] args) {
         setUpWindow();
 
-        Vec3 cameraPos = new Vec3(0, 0, 0);
+        Vec3 cameraPos = new Vec3(0, 0, 0f);
         Vec3 cameraV = new Vec3(0, 0, -1);
         Vec3 imgPlaneR = new Vec3(1, 0, 0);
         Camera camera = new Camera(cameraPos,cameraV, imgPlaneR, 2, 2, 1);
 
-        List<SceneObject> sceneObjects = getCSG2();
+        List<SceneObject> sceneObjects = getCSG();
         List<Light> lights = getLights();
 
         renderScene(camera, sceneObjects, lights);
@@ -57,20 +59,26 @@ public class MyRaytracer {
 
         int threads = Runtime.getRuntime().availableProcessors();
         ExecutorService executor = Executors.newFixedThreadPool(threads);
-
-        float startingIOR = getStartingIOR(camera.getPosition(), objects);
+        long startTime = System.nanoTime();
 
         for (int y = 0; y < RES_Y; ++y) {
             final int row = y;
             executor.submit(() -> {
                 for (int x = 0; x < RES_X; ++x) {
                     Vec3 pixelTopLeft = pxStart.add(stepRight.multiply(x)).add(stepUp.multiply(row));
-                    Color color = adaptiveSample(camera, pixelTopLeft, stepRight, stepUp, 0, objects, lights, startingIOR);
+
+                    // Initialize IOR stack for primary ray
+                    Stack<Float> initialIorStack = getInitialIorStack(camera.getPosition(), objects);
+
+                    Color color = adaptiveSample(camera, pixelTopLeft, stepRight, stepUp, 0, objects, lights, initialIorStack);
                     pixels[row * RES_X + x] = color.toHex();
                 }
                 synchronized (imageSource) {
                     imageSource.newPixels();
                 }
+                long elapsedTime = System.nanoTime() - startTime;
+                double seconds = elapsedTime / 1_000_000_000.0;
+                System.out.printf("Rendered row %d - Time elapsed: %.2f seconds%n", row, seconds);
             });
         }
         executor.shutdown();
@@ -81,7 +89,22 @@ public class MyRaytracer {
         }
     }
 
-    private static Color adaptiveSample(Camera camera, Vec3 topLeft, Vec3 stepX, Vec3 stepY, int depth, List<SceneObject> objects, List<Light> lights, float ior) {
+    private static Stack<Float> getInitialIorStack(Vec3 cameraPos, List<SceneObject> objects) {
+        Stack<Float> iorStack = new Stack<>();
+        List<SceneObject> containingObjects = new ArrayList<>();
+
+        for (SceneObject obj : objects) {
+            if (obj.isInside(cameraPos)) {
+                containingObjects.add(obj);
+            }
+        }
+        for (SceneObject obj : containingObjects) {
+            iorStack.push(obj.getMaterial().getIor());
+        }
+        return iorStack;
+    }
+
+    private static Color adaptiveSample(Camera camera, Vec3 topLeft, Vec3 stepX, Vec3 stepY, int depth, List<SceneObject> objects, List<Light> lights, Stack<Float> iorStack) {
         Vec3[] positions = new Vec3[4];
         positions[0] = topLeft;
         positions[1] = topLeft.add(stepX);
@@ -91,7 +114,9 @@ public class MyRaytracer {
         Color[] colors = new Color[4];
         for (int i = 0; i < 4; i++) {
             Ray ray = new Ray(camera.getPosition(), positions[i].subtract(camera.getPosition()));
-            colors[i] = traceRay(ray, objects, lights, camera, ior, 7);
+            Stack<Float> stackCopy = new Stack<>();
+            stackCopy.addAll(iorStack);
+            colors[i] = traceRay(ray, objects, lights, camera, stackCopy, 7);
         }
 
         boolean similar = true;
@@ -113,69 +138,206 @@ public class MyRaytracer {
             Vec3 halfX = stepX.multiply(0.5f);
             Vec3 halfY = stepY.multiply(0.5f);
 
-            Color c1 = adaptiveSample(camera, topLeft, halfX, halfY, depth + 1, objects, lights, ior);
-            Color c2 = adaptiveSample(camera, topLeft.add(halfX), halfX, halfY, depth + 1, objects, lights, ior);
-            Color c3 = adaptiveSample(camera, topLeft.add(halfX).add(halfY), halfX, halfY, depth + 1, objects, lights, ior);
-            Color c4 = adaptiveSample(camera, topLeft.add(halfY), halfX, halfY, depth + 1, objects, lights, ior);
+            Color c1 = adaptiveSample(camera, topLeft, halfX, halfY, depth + 1, objects, lights, iorStack);
+            Color c2 = adaptiveSample(camera, topLeft.add(halfX), halfX, halfY, depth + 1, objects, lights, iorStack);
+            Color c3 = adaptiveSample(camera, topLeft.add(halfX).add(halfY), halfX, halfY, depth + 1, objects, lights, iorStack);
+            Color c4 = adaptiveSample(camera, topLeft.add(halfY), halfX, halfY, depth + 1, objects, lights, iorStack);
 
             Vec3 avg = c1.getVector().add(c2.getVector()).add(c3.getVector()).add(c4.getVector()).divide(4f);
             return new Color(avg);
         }
     }
 
-    private static Color traceRay(Ray ray, List<SceneObject> objects, List<Light> lights, Camera camera, float currentIOR, int depth) {
+    private static Color traceRay(Ray ray, List<SceneObject> objects, List<Light> lights, Camera camera, Stack<Float> iorStack, int depth) {
         if (depth <= 0) return Color.BLACK;
 
         Intersection nearestIntersection = getNearestIntersection(ray, objects);
         if (nearestIntersection == null) return Color.BLACK;
 
         SceneObject hitObject = nearestIntersection.getObject();
+        Vec3 hitPoint = nearestIntersection.getPoint();
         Material material = hitObject.getMaterial();
+
+        // Current IOR is the top of the stack (or air if empty)
+        float currentIOR = iorStack.isEmpty() ? 1.0f : iorStack.peek();
 
         List<Light> relevantLights = computeSoftShadows(nearestIntersection, lights, objects);
         LightingContext context = new LightingContext(relevantLights, hitObject, nearestIntersection, camera, Vec3.ZERO, currentIOR);
         Color localColor = cookTorranceLighting.getFinalColor(context);
 
         Vec3 normal = nearestIntersection.getNormal();
-        Vec3 viewDir = ray.getV();
+        Vec3 viewDir = ray.getV().normalize();
 
-        // REFLECT
-        Vec3 reflectionDir = viewDir.reflect(normal);
-        Ray reflectedRay = new Ray(nearestIntersection.getPoint().add(normal.multiply(EPSILON)), reflectionDir);
-        Color reflectedColor = traceRay(reflectedRay, objects, lights, camera, currentIOR, depth - 1);
+        // INDIRECT LIGHTING (Path Tracing) - diffuse reflection
+        Vec3 indirect = Vec3.ZERO;
+        if (PATH_TRACING_SAMPLES > 0) {
+            for (int i = 0; i < PATH_TRACING_SAMPLES; i++) {
+                Vec3 sampleDir = randomHemisphereDirection(normal); // cosine-weighted
+                float pdf = pdfCosine(normal, sampleDir);
+                if (pdf <= 0) continue;
+
+                Ray bounceRay = new Ray(hitPoint.add(normal.multiply(EPSILON)), sampleDir);
+                Stack<Float> bounceIorStack = new Stack<>();
+                bounceIorStack.addAll(iorStack);
+                Color bounceColor = traceRay(bounceRay, objects, lights, camera, bounceIorStack, depth - 1);
+                Vec3 bounceRadiance = bounceColor.getVector();
+
+                Intersection bounceIntersection = getNearestIntersection(bounceRay, objects);
+                float bounceRoughness = 1.0f;
+                Vec3 materialContribution = Vec3.ZERO;
+
+                if (bounceIntersection != null) {
+                    Material bounceMaterial = bounceIntersection.getObject().getMaterial();
+                    bounceRoughness = bounceMaterial.getRoughness();
+
+                    Vec3 baseAlbedo = bounceMaterial.getAlbedo().getVector().multiply(0.1f * bounceRoughness);
+                    materialContribution = baseAlbedo;
+                }
+
+                // Scale the incoming radiance by how diffuse the hit surface is
+                bounceRadiance = bounceRadiance.add(materialContribution);
+                bounceRadiance = bounceRadiance.multiply(bounceRoughness);
+
+                // Lambertian BRDF: albedo / π
+                Vec3 brdf = material.getAlbedo().getVector().divide((float) Math.PI);
+                float cosTheta = Math.max(0.0f, normal.dot(sampleDir));
+
+                // Monte Carlo integration: L * BRDF * cos(θ) / PDF
+                Vec3 contribution = bounceRadiance.multiply(brdf).multiply(cosTheta / pdf);
+                indirect = indirect.add(contribution);
+            }
+
+            indirect = indirect.divide(PATH_TRACING_SAMPLES);
+        }
+        Color totalLocalColor = new Color(localColor.getVector().add(indirect));
+
+        // REFLECT (Path tracing)
+        Color reflectedColor = Color.BLACK;
+        if (PATH_TRACING_SAMPLES > 0) {
+            int reflectionSamples = (material.getRoughness() < 0.05f) ? 1 : PATH_TRACING_SAMPLES;
+            Vec3 reflectionDir = viewDir.reflect(normal);
+            Vec3 glossySum = Vec3.ZERO;
+
+            for (int i = 0; i < reflectionSamples; i++) {
+                Vec3 sampledDir = (material.getRoughness() < 0.05f)
+                        ? reflectionDir
+                        : sampleGlossyDirection(reflectionDir, normal, material.getRoughness());
+
+                Ray glossyRay = new Ray(hitPoint.add(normal.multiply(EPSILON)), sampledDir);
+                Stack<Float> glossyIorStack = new Stack<>();
+                glossyIorStack.addAll(iorStack);
+
+                Color bounceColor = traceRay(glossyRay, objects, lights, camera, glossyIorStack, depth - 1);
+
+                // weight by cosine for energy conservation
+                float cosTheta = Math.max(0.0f, normal.dot(sampledDir));
+                glossySum = glossySum.add(bounceColor.getVector().multiply(cosTheta));
+            }
+            glossySum = glossySum.divide(reflectionSamples);
+            reflectedColor = new Color(glossySum);
+        }
 
         // REFRACT
         boolean entering = -viewDir.dot(normal) > 0;
 
-        float iorFrom = entering ? currentIOR : material.getIor();
-        float iorTo = entering ? material.getIor() : currentIOR;
+        float iorFrom, iorTo;
+        Stack<Float> newIorStack = new Stack<>();
+        newIorStack.addAll(iorStack);
+
+        if (entering) {
+            iorFrom = currentIOR;
+            iorTo = material.getIor();
+            newIorStack.push(material.getIor());
+        } else {
+            iorFrom = material.getIor();
+            if (!newIorStack.isEmpty() && Math.abs(newIorStack.peek() - material.getIor()) < 1e-6f) {
+                newIorStack.pop();
+            }
+            iorTo = newIorStack.isEmpty() ? 1.0f : newIorStack.peek();
+        }
 
         Vec3 refractionNormal = entering ? normal : normal.multiply(-1);
-
         Vec3 refractionDir = viewDir.refract(refractionNormal, iorFrom, iorTo);
+
         Color refractedColor = Color.BLACK;
         if (refractionDir != null) {
-            Ray refractedRay = new Ray(nearestIntersection.getPoint().subtract(refractionNormal.multiply(EPSILON)), refractionDir);
-            refractedColor = traceRay(refractedRay, objects, lights, camera, iorFrom, depth - 1);
+            Vec3 offset = entering ? normal.multiply(-EPSILON) : normal.multiply(EPSILON);
+            Ray refractedRay = new Ray(nearestIntersection.getPoint().add(offset), refractionDir);
+            refractedColor = traceRay(refractedRay, objects, lights, camera, newIorStack, depth - 1);
         }
-
 
         float fresnel = cookTorranceLighting.calculateFresnel(viewDir, refractionNormal, iorFrom, iorTo);
-        float reflectivity = fresnel * (1 - material.getRoughness());
-        float transmission = (1.0f - fresnel) * material.getTransmission();
 
-        float sum = reflectivity + transmission;
-        if (sum > 1.0f) {
-            reflectivity /= sum;
-            transmission /= sum;
+        float reflectionWeight = fresnel;
+        float transmissionWeight = (1.0f - fresnel) * material.getTransmission();
+
+        float totalWeight = reflectionWeight + transmissionWeight;
+        if (totalWeight > 1.0f) {
+            reflectionWeight /= totalWeight;
+            transmissionWeight /= totalWeight;
         }
-        float localWeight = 1.0f - reflectivity - transmission;
 
-        Vec3 finalColor = localColor.getVector().multiply(localWeight)
-                .add(reflectedColor.getVector().multiply(reflectivity))
-                .add(refractedColor.getVector().multiply(transmission));
+        float localWeight = Math.max(0.0f, 1.0f - reflectionWeight - transmissionWeight);
+
+        Vec3 finalColor = totalLocalColor.getVector().multiply(localWeight)
+                .add(reflectedColor.getVector().multiply(reflectionWeight))
+                .add(refractedColor.getVector().multiply(transmissionWeight));
 
         return new Color(finalColor);
+    }
+
+    private static Vec3 sampleGlossyDirection(Vec3 reflectionDir, Vec3 normal, float roughness) {
+        // roughness [0,1] to Phong exponent [100,1]
+        float exponent = Math.max(1.0f, (1.0f - roughness) * 100.0f);
+
+        float u1 = (float)Math.random();
+        float u2 = (float)Math.random();
+        float theta = (float)Math.acos(Math.pow(u1, 1.0f / (exponent + 1)));
+        float phi = 2.0f * (float)Math.PI * u2;
+
+        float x = (float)(Math.sin(theta) * Math.cos(phi));
+        float y = (float)(Math.sin(theta) * Math.sin(phi));
+        float z = (float)Math.cos(theta);
+
+        // Build orthonormal basis around reflectionDir
+        Vec3 w = reflectionDir.normalize();
+        Vec3 u = (Math.abs(w.getX()) > 0.1f ? new Vec3(0,1,0) : new Vec3(1,0,0)).cross(w).normalize();
+        Vec3 v = w.cross(u);
+
+        Vec3 sampleDir = u.multiply(x).add(v.multiply(y)).add(w.multiply(z));
+        return sampleDir.normalize();
+    }
+
+
+    //PDF: Probability Density Function (how likely it is to sample a particular direction when generating random rays)
+    private static float pdfCosine(Vec3 normal, Vec3 dir) {
+        float cosTheta = Math.max(0.0f, normal.dot(dir.normalize()));
+        return cosTheta / (float)Math.PI;
+    }
+
+    private static Vec3 randomHemisphereDirection(Vec3 normal) {
+        // Create tangent space basis (tangent1, tangent2, normal)
+        Vec3 w = normal.normalize();
+        Vec3 a = Math.abs(w.getX()) > 0.1f ? new Vec3(0, 1, 0) : new Vec3(1, 0, 0);
+
+        Vec3 tang1 = a.cross(w).normalize();
+        Vec3 tang2 = w.cross(tang1);
+
+        // Generate random direction in hemisphere using cosine-weighted sampling
+        double sinTheta = Math.sqrt(Math.random());
+        double cosTheta = Math.sqrt(1 - sinTheta * sinTheta);
+
+        double psi = Math.random() * 2.0 * Math.PI;
+
+        double aComp = sinTheta * Math.cos(psi);
+        double bComp = sinTheta * Math.sin(psi);
+        double cComp = cosTheta;
+
+        Vec3 v1 = tang1.multiply((float) aComp);
+        Vec3 v2 = tang2.multiply((float) bComp);
+        Vec3 v3 = w.multiply((float) cComp);
+
+        return v1.add(v2).add(v3).normalize();
     }
 
     private static Intersection getNearestIntersection(Ray ray, List<SceneObject> objects) {
@@ -250,28 +412,6 @@ public class MyRaytracer {
         return new Vec3((float)(r * Math.cos(theta)), (float)(r * Math.sin(theta)), 0f);
     }
 
-    private static float getStartingIOR(Vec3 point, List<SceneObject> objects) {
-        Vec3 testRayDir = new Vec3(0, 0, -1);
-        float minDistanceToSurface = Float.MAX_VALUE;
-        float ior = 1.0f; // air by default
-
-        for (SceneObject obj : objects) {
-            List<Intersection> intersections = obj.intersect(new Ray(point, testRayDir));
-
-            for (Intersection inter : intersections) {
-                if(obj.isInside(point)) {
-                    float dist = inter.getDistance();
-                    if (dist < minDistanceToSurface) {
-                        minDistanceToSurface = dist;
-                        ior = inter.getObject().getMaterial().getIor();
-                    }
-                }
-            }
-        }
-
-        return ior;
-    }
-
     private static void setUpWindow() {
         imageSource = new MemoryImageSource(RES_X, RES_Y, new DirectColorModel(24, 0xff0000, 0xff00, 0xff), pixels, 0, RES_X);
         imageSource.setAnimated(true);
@@ -284,11 +424,30 @@ public class MyRaytracer {
         frame.setVisible(true);
     }
 
+    private static List<Light> getLights3() {
+        return Arrays.asList(
+                //new SpotLight(new Vec3(0, 0, 3), 1f, Color.WHITE, new Vec3(0, 0, -1), (float) Math.toRadians(15), 1f),
+                new Light(new Vec3(-0.5f, 0, 2), 1f, Color.WHITE)
+                //new Light(new Vec3(0, 2, -4), 1f, Color.WHITE)
+        );
+    }
+
     private static List<Light> getLights() {
         return Arrays.asList(
                 new SpotLight(new Vec3(0, 0, 3), 1f, Color.WHITE, new Vec3(0, 0, -1), (float) Math.toRadians(15), 1f),
                 new Light(new Vec3(1, 1, 2), 1f, Color.WHITE)
-                //new Light(new Vec3(0, 2, -4), 1f, Color.WHITE)
+
+
+                //new Light(new Vec3(1.2f, -0.5f, -2.5f), 1f, Color.WHITE)
+        );
+    }
+
+    private static List<Light> getLights2() {
+        return Arrays.asList(
+                new Light(new Vec3(1.2f, 0.2f, -3f), 1f, Color.WHITE), // main light, above and to the side
+                new Light(new Vec3(0.01f, 0, 0), 1f, Color.WHITE) // main light, above and to the side
+
+                //new Light(new Vec3(0, 1, 2), 1f, Color.WHITE)
         );
     }
 
@@ -296,7 +455,8 @@ public class MyRaytracer {
         List<SceneObject> objects = new ArrayList<>();
 
         Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.9f, 0.01f, 0, 1f);
-        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.01f, 0.01f, 1f, 1.5f);
+        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.04f, 0.01f, 1f, 1.5f);
+        Material air = new Material(new Color(1f, 1f, 1f), 0.01f, 0.01f, 1f, 1f);
 
         objects.add(new Area(new Vec3(0, 1, 0), -1f, redish));
 
@@ -310,12 +470,12 @@ public class MyRaytracer {
 
         SceneObject greenSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, greenish);
 
-        SceneObject greenSphereI = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, greenish);
+        SceneObject greenSphereI = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.199f}, air);
 
         SceneObject d = new DifferenceObject(greenSphere, greenSphereI, greenish).transform(transform);
 
         SceneObject greenSphere2 = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, greenish);
-        SceneObject greenSphere2I = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, greenish);
+        SceneObject greenSphere2I = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.1f}, air);
 
         SceneObject d2 = new DifferenceObject(greenSphere2, greenSphere2I, greenish).transform(new Mat4().translate(-0.5f,-0.5f,-2));;
         objects.add(d2);
@@ -328,7 +488,7 @@ public class MyRaytracer {
     private static List<SceneObject> getCSG2() {
         List<SceneObject> objects = new ArrayList<>();
 
-        Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.9f, 0.01f, 0, 1f);
+        Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.5f, 0.01f, 0, 1f);
         Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.01f, 0.01f, 1f, 1.5f);
 
         objects.add(new Area(new Vec3(0, 1, 0), -1, redish));
@@ -351,6 +511,62 @@ public class MyRaytracer {
 
         return objects;
     }
+
+    private static List<SceneObject> getCSG3() {
+        List<SceneObject> objects = new ArrayList<>();
+
+        Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.9f, 0.01f, 0, 1f);
+        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.95f, 0.01f, 0f, 1f);
+
+        objects.add(new Area(new Vec3(0, 1, 0), -1, redish));
+
+        Mat4 transform = new Mat4().rotateY(0.5f).translate(1f, 0, -7);
+        //SceneObject cube = makeCube(redish).transform(transform);
+
+        SceneObject greenSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -1f}, greenish)
+                .transform(new Mat4().translate(0f,0.15f,-3f));
+
+        Material air = new Material(new Color(1f, 1f, 1f), 0.01f, 0.01f, 1, 1f);
+
+        //SceneObject innerSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, air)
+        //        .transform(new Mat4().translate(0f,0f,-3f));
+
+        //SceneObject d = new DifferenceObject(greenSphere, innerSphere, greenish);
+        //objects.add(cube);
+        objects.add(greenSphere);
+        //objects.add(d);
+
+        return objects;
+    }
+
+    private static List<SceneObject> getCSG4() {
+        List<SceneObject> objects = new ArrayList<>();
+
+        // Materials: high roughness for strong diffuse reflection
+        Material redDiffuse = new Material(new Color(0.8f, 0.2f, 0.2f), 0.9f, 0.01f, 0f, 1f); // diffuse red
+        Material whiteDiffuse = new Material(new Color(0.2f, 0.2f, 0.2f), 0.01f, 0.01f, 0f, 1.5f); // diffuse white
+
+        // Ground plane (white)
+        objects.add(new Area(new Vec3(0, 1, 0), -1, whiteDiffuse));
+
+        // Red sphere above the ground
+        SceneObject redSphere = new Quadrik(
+                new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -1f}, // unit sphere
+                redDiffuse
+        ).transform(new Mat4().translate(0f, 0f, -3f));
+        objects.add(redSphere);
+
+        // Optionally, add a green diffuse sphere for color bleeding
+        Material greenDiffuse = new Material(new Color(0.2f, 0.8f, 0.3f), 0.99f, 0.01f, 0f, 1.5f);
+        SceneObject greenSphere = new Quadrik(
+                new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.5f},
+                whiteDiffuse
+        ).transform(new Mat4().translate(2f, 0f, -3f));
+        objects.add(greenSphere);
+
+        return objects;
+    }
+
 
     private static SceneObject makeCube(Material material) {
         List<SceneObject> faces = Arrays.asList(
