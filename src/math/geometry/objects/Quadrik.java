@@ -55,7 +55,7 @@ public class Quadrik extends SceneObject {
             float t = -C / B;
             Vec3 point = ray.getPoint(t);
             Vec3 normal = getNormal(point);
-            intersections.add(new Intersection(point, normal, t, this));
+            intersections.add(new Intersection(point, normal, t, this, getMaterial()));
 
             return intersections;
         }
@@ -74,8 +74,8 @@ public class Quadrik extends SceneObject {
             Vec3 normal1 = getNormal(point1);
             Vec3 normal2 = getNormal(point2);
 
-            intersections.add(new Intersection(point1, normal1, s1,this));
-            intersections.add(new Intersection(point2, normal2, s2,this));
+            intersections.add(new Intersection(point1, normal1, s1,this, getMaterial()));
+            intersections.add(new Intersection(point2, normal2, s2,this, getMaterial()));
         }
 
         return intersections;

@@ -11,7 +11,7 @@ public class LambertLighting extends LightingModel {
         Vec3 lighting = Vec3.ZERO;
         Vec3 point = ctx.intersection.getPoint();
         Vec3 normal = ctx.intersection.getNormal();
-        Material material = ctx.object.getMaterial();
+        Material material = ctx.intersection.getMaterial();
         Vec3 albedo = material.getAlbedo().getVector();
 
         for (Light light : ctx.lights) {

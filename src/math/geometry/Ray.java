@@ -23,4 +23,10 @@ public class Ray {
     public Vec3 getV() {
         return v;
     }
+
+    public Ray transform(Mat4 matrix) {
+        Vec3 newP = matrix.multiply(p, 1);
+        Vec3 newV = matrix.multiply(v, 0).normalize();
+        return new Ray(newP, newV);
+    }
 }

@@ -109,4 +109,8 @@ public class Vec3 {
     public float getZ(){
         return z;
     }
+
+    public String toString() {
+        return String.format("(%.5f, %.5f, %.5f)", getX(), getY(), getZ());
+    }
 }
