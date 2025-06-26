@@ -27,23 +27,65 @@ public abstract class SDFObject extends SceneObject {
         Ray localRay = ray.transform(inverseTransform);
 
         float t = 0f;
-        float maxDistance = 100f;
-        float epsilon = 1e-4f;
-        int maxSteps = 1024;
+        final float maxDistance = 100f;
+        final float epsilon = 1e-4f;
+        final int maxSteps = 512;
 
-        for (int i = 0; i < maxSteps; i++) {
+        float prevT = 0f;
+        Vec3 prevPoint = localRay.getPoint(prevT);
+        float prevDist = estimateDistance(prevPoint);
+
+        float lastIntersectionT = -Float.MAX_VALUE;
+
+        while (t < maxDistance && intersections.size() < maxSteps) {
             Vec3 point = localRay.getPoint(t);
-            float distance = estimateDistance(point);
+            float dist = estimateDistance(point);
 
-            if (distance < epsilon) {
-                Vec3 worldPoint = transform.multiply(point, 1);
-                Vec3 worldNormal = getNormal(point);
-                intersections.add(new Intersection(worldPoint, worldNormal, t, this));
-                break;
+            // detect surface crossing
+            if ((prevDist > 0 && dist <= 0) || (prevDist < 0 && dist >= 0)) {
+                // binary search to refine intersection
+                float t0 = prevT;
+                float t1 = t;
+                float distT0 = prevDist;
+
+                for (int i = 0; i < 8; i++) {
+                    float midT = 0.5f * (t0 + t1);
+                    Vec3 midPoint = localRay.getPoint(midT);
+                    float midDist = estimateDistance(midPoint);
+
+                    if ((distT0 > 0 && midDist <= 0) || (distT0 < 0 && midDist >= 0)) {
+                        t1 = midT;
+                    } else {
+                        t0 = midT;
+                        distT0 = midDist;
+                    }
+                }
+
+                // only add if sufficiently far from last intersection
+                if (t1 - lastIntersectionT > epsilon) {
+                    Vec3 localPoint = localRay.getPoint(t1);
+                    Vec3 worldPoint = transform.multiply(localPoint, 1);
+                    Vec3 worldNormal = getNormal(localPoint);
+
+                    // IMPORTANT: Use world-space distance for intersection
+                    float worldDistance = worldPoint.subtract(ray.getP()).getLength();
+
+                    intersections.add(new Intersection(worldPoint, worldNormal, worldDistance, this, getMaterial()));
+                    lastIntersectionT = t1;
+                }
+
+                // move a bit beyond intersection
+                t = t1 + 2 * epsilon;
+                prevT = t;
+                prevPoint = localRay.getPoint(prevT);
+                prevDist = estimateDistance(prevPoint);
+                continue;
             }
 
-            if (t > maxDistance) break;
-            t += distance * 0.2f;
+            prevT = t;
+            prevDist = dist;
+
+            t += Math.max(Math.abs(dist), epsilon) * 0.2f;
         }
 
         return intersections;
@@ -61,6 +103,6 @@ public abstract class SDFObject extends SceneObject {
 
     public abstract boolean isInside(Vec3 point);
 
-    public abstract SceneObject transform(Mat4 transformationMatrix);
+    public abstract SDFObject transform(Mat4 transformationMatrix);
 
 }

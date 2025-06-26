@@ -220,4 +220,13 @@ public class Mat4 {
     public float[] getValues() {
         return values;
     }
+
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        float[] m = this.getValues(); // or whatever your internal float array is
+        for (int i = 0; i < 4; i++) {
+            sb.append(String.format("| %8.3f %8.3f %8.3f %8.3f |\n", m[i], m[i+4], m[i+8], m[i+12]));
+        }
+        return sb.toString();
+    }
 }

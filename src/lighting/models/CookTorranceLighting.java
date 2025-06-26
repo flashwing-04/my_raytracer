@@ -14,7 +14,7 @@ public class CookTorranceLighting extends LightingModel {
         Vec3 normal = ctx.intersection.getNormal();
         Vec3 view = ctx.camera.getPosition().subtract(point).normalize();
 
-        Material material = ctx.object.getMaterial();
+        Material material = ctx.intersection.getMaterial();
         Vec3 albedo = material.getAlbedo().getVector();
         float roughness = material.getRoughness();
         float metalness = material.getMetalness();

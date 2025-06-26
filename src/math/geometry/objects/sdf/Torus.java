@@ -2,13 +2,8 @@ package math.geometry.objects.sdf;
 
 import math.Mat4;
 import math.Vec3;
-import math.geometry.Intersection;
-import math.geometry.Ray;
-import math.geometry.objects.SceneObject;
 import stuff.Material;
 
-import java.util.ArrayList;
-import java.util.List;
 
 public class Torus extends SDFObject {
     private float majorRadius;
@@ -26,20 +21,20 @@ public class Torus extends SDFObject {
         this.minorRadius = minorRadius;
     }
 
-    public float estimateDistance(Vec3 p) {
-        float x = p.getX();
-        float y = p.getY();
-        float z = p.getZ();
+    public float estimateDistance(Vec3 localP) {
+        float x = localP.getX();
+        float y = localP.getY();
+        float z = localP.getZ();
         float qx = (float)Math.sqrt(x * x + z * z) - majorRadius;
         float qy = y;
         return (float)Math.sqrt(qx * qx + qy * qy) - minorRadius;
     }
 
-    public boolean isInside(Vec3 point) {
-        return estimateDistance(point) < 0.0f;
+    public boolean isInside(Vec3 worldPoint) {
+        Vec3 localPoint = inverseTransform.multiply(worldPoint, 1);
+        return estimateDistance(localPoint) < 0.0f;
     }
-
-    public SceneObject transform(Mat4 transformationMatrix) {
+    public SDFObject transform(Mat4 transformationMatrix) {
         Mat4 newTransform = transformationMatrix.multiply(this.transform);
         return new Torus(majorRadius, minorRadius, newTransform, getMaterial());
     }

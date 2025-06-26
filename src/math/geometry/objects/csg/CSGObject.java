@@ -55,7 +55,8 @@ public abstract class CSGObject extends SceneObject {
                         inter.getPoint(),
                         getAdjustedNormal(inter, obj),
                         inter.getDistance(),
-                        this
+                        this,
+                        obj.getMaterial()
                 ));
             }
 

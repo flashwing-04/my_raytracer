@@ -19,6 +19,7 @@ import math.geometry.*;
 import math.geometry.objects.*;
 import math.geometry.objects.csg.*;
 import math.geometry.objects.sdf.QuarticSurface;
+import math.geometry.objects.sdf.SDFObject;
 import math.geometry.objects.sdf.SuperEllipsoid;
 import math.geometry.objects.sdf.Torus;
 import scene.*;
@@ -73,7 +74,7 @@ public class MyRaytracer {
                     Ray ray = new Ray(camera.getPosition(), pixelPos.subtract(camera.getPosition()));
                     Color color = traceRay(ray, objects, lights, camera, startingIOR, 7);
                     pixels[row * RES_X + x] = color.toHex();
-                    System.out.println('p');
+                    //System.out.println('p');
                 }
                 synchronized (imageSource) {
                     imageSource.newPixels();
@@ -95,7 +96,7 @@ public class MyRaytracer {
         if (nearestIntersection == null) return Color.BLACK;
 
         SceneObject hitObject = nearestIntersection.getObject();
-        Material material = hitObject.getMaterial();
+        Material material = nearestIntersection.getMaterial();
 
         List<Light> relevantLights = computeSoftShadows(nearestIntersection, lights, objects);
         LightingContext context = new LightingContext(relevantLights, hitObject, nearestIntersection, camera, Vec3.ZERO, currentIOR);
@@ -140,6 +141,8 @@ public class MyRaytracer {
         Vec3 finalColor = localColor.getVector().multiply(localWeight)
                 .add(reflectedColor.getVector().multiply(reflectivity))
                 .add(refractedColor.getVector().multiply(transmission));
+
+        //return new Color( normal.multiply(0.5f).add(new Vec3(0.5f)));
 
         return new Color(finalColor);
     }
@@ -270,6 +273,7 @@ public class MyRaytracer {
     private static List<Light> getLights() {
         return Arrays.asList(
                 new Light(new Vec3(0, 0, 0), 0.5f, Color.WHITE)
+            //new Light(new Vec3(0, 4, -3), 0.5f, Color.WHITE)
 
                 //new SpotLight(new Vec3(2, 1f, 0), 5f, new Color(0, 0, 1), new Vec3(-0.5f, -0.3f, -1), (float) Math.toRadians(15), 1f),
                 //new SpotLight(new Vec3(-2, 1f, 0), 5f, new Color(0, 0, 1), new Vec3(0.5f, -0.3f, -1), (float) Math.toRadians(15), 1f),
@@ -320,29 +324,38 @@ public class MyRaytracer {
 
         objects.add(new Area(new Vec3(0, 1, 0), -1.5f, redish));
 
-        Mat4 transform = new Mat4().rotateY(0.5f).rotateX(0f).translate(0f, 0, -7);
-        SceneObject cube = makeCube(redish).transform(transform);
+        Mat4 transform = new Mat4().translate(0f, 0, -3);
+        //SceneObject cube = makeCube(redish).transform(transform);
 
-        SceneObject greenSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, redish)
-                .transform(new Mat4().translate(0f,0f,-3f));
+        SceneObject greenSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -1f}, redish)
+                .transform(transform);
+        SceneObject greenSphere2 = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -1f}, redish).transform(new Mat4().translate(1f,0f,-3f));
 
         //SceneObject greenSphere = new Sphere(new Vec3(0,0,-3), 1f, redish);;
         Material air = new Material(new Color(1f, 1f, 1f), 0.01f, 0.01f, 1, 1f);
 
-        SceneObject innerSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, air)
-                .transform(new Mat4().translate(0f,0f,-3f));
+        //SceneObject innerSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, air)
+          //      .transform(new Mat4().translate(0f,0f,-3f));
 
-        SceneObject superE = new SuperEllipsoid(1, 1, 1, 1, 1, redish).transform(transform);
+        SDFObject superE = new SuperEllipsoid(1, 1, 1, 1f, 1f, redish).transform(new Mat4().translate(0,0f,-3f));
+        SDFObject superE2 = new SuperEllipsoid(1, 1, 1, 1, 1, redish).transform(new Mat4().translate(0.4f,0f,-3f));
+        float a1=1, a2=1, a3=1, e1 =1, e2 = 1;
+        Mat4 translation = new Mat4().translate(0f, 0f, -3f);
+        SuperEllipsoid ellipsoid = new SuperEllipsoid(a1, a2, a3, e1, e2, translation, greenish);
 
-        SceneObject torus = new Torus(2, 1, redish).transform(transform);
+        Vec3 insidePoint = new Vec3(0, 0, -3);
+        Vec3 outsidePoint = new Vec3(500, 500, 500);
 
-        SceneObject specialQ = new QuarticSurface(-2, 1.5f, redish).transform(transform);
-        SceneObject d = new DifferenceObject(greenSphere, innerSphere, redish);
+        SceneObject torus = new Torus(2, 1, redish).transform(new Mat4().translate(0,0,-3f));
+
+        SceneObject test = new IntersectionObject(superE2, superE, redish);
+        //SceneObject specialQ = new QuarticSurface(-2, 1.5f, redish).transform(transform);
+        //SceneObject d = new DifferenceObject(greenSphere, innerSphere, redish);
         //objects.add(cube);
         //objects.add(greenSphere);
         //objects.add(d);
-        objects.add(torus);
-
+        objects.add(test);
+        //objects.add(greenSphere2);
         return objects;
     }
 

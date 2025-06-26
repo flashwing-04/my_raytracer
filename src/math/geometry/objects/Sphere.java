@@ -30,7 +30,7 @@ public class Sphere extends SceneObject {
         if (a == 0 && b != 0) {
             Vec3 point = ray.getPoint(-c / b);
             Vec3 normal = getNormal(point);
-            intersections.add(new Intersection(point, normal, -c / b, this));
+            intersections.add(new Intersection(point, normal, -c / b, this, getMaterial()));
 
             return intersections;
         }
@@ -49,8 +49,8 @@ public class Sphere extends SceneObject {
             Vec3 normal1 = getNormal(point1);
             Vec3 normal2 = getNormal(point2);
 
-            intersections.add(new Intersection(point1, normal1, s1, this));
-            intersections.add(new Intersection(point2, normal2, s2, this));
+            intersections.add(new Intersection(point1, normal1, s1, this, getMaterial()));
+            intersections.add(new Intersection(point2, normal2, s2, this, getMaterial()));
         }
 
         return intersections;
