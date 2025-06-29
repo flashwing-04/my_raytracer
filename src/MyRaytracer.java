@@ -32,20 +32,22 @@ public class MyRaytracer {
     private static final int RES_Y = 1024;
     private static final int[] pixels = new int[RES_X * RES_Y];
 
+    private static CubeMap skybox = null;
+
     private static final float EPSILON = 1e-4f;
     private static MemoryImageSource imageSource;
 
     private static final int SOFT_SHADOW_SAMPLES = 1;
     private static final float LIGHT_RADIUS = 0f;
 
-    private static final int PATH_TRACING_SAMPLES = 1;
+    private static final int PATH_TRACING_SAMPLES = 4;
 
     private static final int MAX_SUPERSAMPLING_DEPTH = 0;
     private static final float COLOR_THRESHOLD = 0.02f;
 
     private static final CookTorranceLighting cookTorranceLighting = new CookTorranceLighting();
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         setUpWindow();
 
         Vec3 cameraPos = new Vec3(0, 0, 0f);
@@ -55,6 +57,15 @@ public class MyRaytracer {
 
         List<SceneObject> sceneObjects = getCSG2();
         List<Light> lights = getLights();
+
+        BufferedImage posX = ImageIO.read(new File("src/scene/environment/posx.jpg"));
+        BufferedImage negX = ImageIO.read(new File("src/scene/environment/negx.jpg"));
+        BufferedImage posY = ImageIO.read(new File("src/scene/environment/posy.jpg"));
+        BufferedImage negY = ImageIO.read(new File("src/scene/environment/negy.jpg"));
+        BufferedImage posZ = ImageIO.read(new File("src/scene/environment/posz.jpg"));
+        BufferedImage negZ = ImageIO.read(new File("src/scene/environment/negz.jpg"));
+
+        skybox = new CubeMap(posX, negX, posY, negY, posZ, negZ);
 
         renderScene(camera, sceneObjects, lights);
         imageSource.newPixels();
@@ -200,8 +211,7 @@ public class MyRaytracer {
                     Material bounceMaterial = bounceIntersection.getObject().getMaterial();
                     bounceRoughness = bounceMaterial.getRoughness();
 
-                    Vec3 baseAlbedo = bounceMaterial.getAlbedo().getVector().multiply(0.1f * bounceRoughness);
-                    materialContribution = baseAlbedo;
+                    materialContribution = bounceMaterial.getAlbedo().getVector().multiply(0.1f * bounceRoughness);
                 }
 
                 // Scale the incoming radiance by how diffuse the hit surface is
@@ -237,7 +247,17 @@ public class MyRaytracer {
                 Stack<Float> glossyIorStack = new Stack<>();
                 glossyIorStack.addAll(iorStack);
 
-                Color bounceColor = traceRay(glossyRay, objects, lights, camera, glossyIorStack, depth - 1);
+                Intersection glossyHit = getNearestIntersection(glossyRay, objects);
+                Color bounceColor;
+
+                if (glossyHit == null && skybox != null) {
+                    // skybox if reflection ray misses
+                    bounceColor = skybox.sample(sampledDir);
+                } else if (glossyHit != null) {
+                    bounceColor = traceRay(glossyRay, objects, lights, camera, glossyIorStack, depth - 1);
+                } else {
+                    bounceColor = Color.BLACK;
+                }
 
                 // weight by cosine for energy conservation
                 float cosTheta = Math.max(0.0f, normal.dot(sampledDir));
@@ -491,20 +511,21 @@ public class MyRaytracer {
         SceneObject cylZ = new Quadrik(new float[]{1, 0, 1, 0, 0, 0, 0, 0, 0, -0.2f}, green);
 
         SceneObject csgShape = new DifferenceObject(new DifferenceObject(new DifferenceObject(new IntersectionObject(baseSphere, cube, redish), cylX, redish), cylY, redish), cylZ, green).transform(transform);
+        SceneObject greenSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, glass).transform(transform);
 
-        SceneObject greenSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, glass);
 
-        SceneObject greenSphereI = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.199f}, air);
+        SceneObject greenSphereI = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.15f}, glass);
 
         SceneObject d = new DifferenceObject(greenSphere, greenSphereI, glass).transform(transform);
 
         SceneObject greenSphere2 = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, glass);
         SceneObject greenSphere2I = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, glass);
 
-        //SceneObject d2 = new DifferenceObject(greenSphere2, greenSphere2I, glass).transform(new Mat4().translate(-0.5f,-0.5f,-2));;
-        //objects.add(d2);
+        SceneObject d2 = new DifferenceObject(greenSphere2, greenSphere2I, glass).transform(new Mat4().translate(-0.5f,-0.5f,-2));;
+        objects.add(d2);
+
         objects.add(csgShape);
-        objects.add(d);
+        objects.add(greenSphere);
 
         return objects;
     }
@@ -513,7 +534,7 @@ public class MyRaytracer {
         List<SceneObject> objects = new ArrayList<>();
 
         Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.5f, 0.01f, 0, 1f);
-        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.01f, 0.01f, 1f, 1.5f);
+        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.01f, 0.9f, 0f, 1.5f);
 
         objects.add(new Area(new Vec3(0, 1, 0), -1.5f, redish));
 
@@ -530,8 +551,8 @@ public class MyRaytracer {
         //SceneObject innerSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, air)
           //      .transform(new Mat4().translate(0f,0f,-3f));
 
-        SDFObject superE = new SuperEllipsoid(1, 1, 1, 1f, 1f, redish).transform(new Mat4().translate(0,0f,-3f));
-        SDFObject superE2 = new SuperEllipsoid(1, 1, 1, 1, 1, redish).transform(new Mat4().translate(0.4f,0f,-3f));
+        SDFObject superE = new SuperEllipsoid(1, 1, 1, 1f, 1f, greenish).transform(new Mat4().translate(0,0f,-3f));
+        SDFObject superE2 = new SuperEllipsoid(1, 1, 1, 1, 1, greenish).transform(new Mat4().translate(0.4f,0f,-3f));
         float a1=1, a2=1, a3=1, e1 =1, e2 = 1;
         Mat4 translation = new Mat4().translate(0f, 0f, -3f);
         SuperEllipsoid ellipsoid = new SuperEllipsoid(a1, a2, a3, e1, e2, translation, greenish);
@@ -540,7 +561,6 @@ public class MyRaytracer {
         Vec3 outsidePoint = new Vec3(500, 500, 500);
 
         SceneObject torus = new Torus(2, 1, redish).transform(new Mat4().translate(0,0,-3f));
-
         SceneObject test = new IntersectionObject(superE2, superE, redish);
         //SceneObject specialQ = new QuarticSurface(-2, 1.5f, redish).transform(transform);
         //SceneObject d = new DifferenceObject(greenSphere, innerSphere, redish);
