@@ -26,7 +26,7 @@ public abstract class CSGObject extends SceneObject {
         List<Intersection> intersections = new ArrayList<>();
         intersections.addAll(objA.intersect(ray));
         intersections.addAll(objB.intersect(ray));
-        intersections.sort(Comparator.comparingDouble(Intersection::getDistance));
+        intersections.sort(Comparator.comparingDouble(Intersection::distance));
         return filterIntersections(intersections, ray);
     }
 
@@ -37,24 +37,24 @@ public abstract class CSGObject extends SceneObject {
     private List<Intersection> filterIntersections(List<Intersection> intersections, Ray ray) {
         List<Intersection> result = new ArrayList<>();
 
-        Vec3 startPoint = ray.getP().add(ray.getV().multiply(1e-5f));
+        Vec3 startPoint = ray.p().add(ray.v().multiply(1e-5f));
         boolean insideA = objA.isInside(startPoint);
         boolean insideB = objB.isInside(startPoint);
         boolean wasInside = computeWasInside(insideA, insideB);
 
         for (Intersection inter : intersections) {
-            if (inter.getDistance() < 1e-5f) continue;
+            if (inter.distance() < 1e-5f) continue;
 
-            SceneObject obj = inter.getObject();
+            SceneObject obj = inter.object();
             if (obj == objA) insideA = !insideA;
             else if (obj == objB) insideB = !insideB;
 
             boolean isInside = computeIsInside(insideA, insideB);
             if (isInside != wasInside) {
                 result.add(new Intersection(
-                        inter.getPoint(),
+                        inter.point(),
                         getAdjustedNormal(inter, obj),
-                        inter.getDistance(),
+                        inter.distance(),
                         this,
                         obj.getMaterial()
                 ));

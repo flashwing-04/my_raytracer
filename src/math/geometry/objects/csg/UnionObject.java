@@ -25,7 +25,7 @@ public class UnionObject extends CSGObject {
 
     @Override
     protected Vec3 getAdjustedNormal(Intersection inter, SceneObject obj) {
-        return inter.getNormal();
+        return inter.normal();
     }
 
     @Override

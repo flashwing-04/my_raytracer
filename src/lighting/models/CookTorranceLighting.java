@@ -1,51 +1,60 @@
 package lighting.models;
 
-import lighting.Light;
-import lighting.LightingContext;
-import lighting.SpotLight;
+import lighting.*;
 import math.Vec3;
 import stuff.Material;
 
-
+/**
+ * Implements the Cook-Torrance physically based lighting model.
+ * Computes the color contribution from lights using GGX microfacet distribution,
+ * Smith geometry term, and Fresnel equations with optional metalness and roughness.
+ */
 public class CookTorranceLighting extends LightingModel {
 
+    /**
+     * Computes the final lighting color at the intersection point.
+     *
+     * @param ctx The lighting context containing intersection, lights, camera, etc.
+     * @return The computed color as a Vec3.
+     */
     public Vec3 computeLight(LightingContext ctx) {
-        Vec3 point = ctx.intersection.getPoint();
-        Vec3 normal = ctx.intersection.getNormal();
-        Vec3 view = ctx.camera.getPosition().subtract(point).normalize();
+        Vec3 point = ctx.intersection().point();
+        Vec3 normal = ctx.intersection().normal();
+        Vec3 view = ctx.camera().getPosition().subtract(point).normalize();
 
-        Material material = ctx.intersection.getMaterial();
+        Material material = ctx.intersection().material();
         Vec3 albedo = material.getAlbedo().getVector();
         float roughness = material.getRoughness();
         float metalness = material.getMetalness();
 
+        // Determine if ray is entering or exiting the surface for IOR calculation
         boolean entering = -view.dot(normal) > 0;
-        float iorFrom = entering ? ctx.currentIor : material.getIor();
-        float iorTo = entering ? material.getIor() : ctx.currentIor;
+        float iorFrom = entering ? ctx.currentIor() : material.getIor();
+        float iorTo = entering ? material.getIor() : ctx.currentIor();
         Vec3 refractionNormal = entering ? normal : normal.multiply(-1);
 
         Vec3 finalColor = Vec3.ZERO;
+        float nv = Math.max(normal.dot(view), 0f);
 
-        float nv = Math.max(normal.dot(view), 0.0f);
-
-        //Vec3 F = fresnelSchlick(nv, material);
+        // Fresnel reflectance at view angle
         Vec3 F = new Vec3(calculateFresnel(view, refractionNormal, iorFrom, iorTo));
-        //TODO: evt. float fresnel * F0 instead
-        for( Light light : ctx.lights) {
-            Vec3 lightDir = (light.getP().subtract(point)).normalize();
-            Vec3 h = view.add(lightDir).normalize();
 
-            float nh = Math.max(normal.dot(h), 0.0f);
-            float nl = Math.max(normal.dot(lightDir), 0.0f);
-            if (nl <= 0) continue;  // light facing away
+        for (Light light : ctx.lights()) {
+            Vec3 lightDir = light.getP().subtract(point).normalize();
+            float nl = Math.max(normal.dot(lightDir), 0f);
+            if (nl <= 0) continue; // light facing away
+
+            Vec3 h = view.add(lightDir).normalize();
+            float nh = Math.max(normal.dot(h), 0f);
 
             float D = distributionGGX(nh, roughness);
             float G = geometrySmith(nv, nl, roughness);
+            float denom = 4f * nv * nl + 1e-4f;
 
-            final float denom = 4.0f * nv * nl + 1e-4f;
-            final Vec3 kSpecular = F.multiply(D * G / denom);
+            Vec3 specular = F.multiply(D * G / denom);
 
-            Vec3 kDiffuse =  Vec3.ONE.subtract(kSpecular).multiply(1.0f - metalness);
+            // Diffuse component scaled by non-metal portion
+            Vec3 diffuse = Vec3.ONE.subtract(specular).multiply(1f - metalness);
 
             float attenuation = 1f;
             if (light instanceof SpotLight spot) {
@@ -53,65 +62,83 @@ public class CookTorranceLighting extends LightingModel {
                 if (attenuation <= 0f) continue;
             }
 
-            Vec3 contribution = (light.getColor().getVector().multiply(light.getIntensity() * nl * attenuation)).multiply(kDiffuse.multiply(albedo).add(kSpecular));
+            Vec3 radiance = light.getColor().getVector().multiply(light.getIntensity() * nl * attenuation);
+
+            Vec3 contribution = radiance.multiply(diffuse.multiply(albedo).add(specular));
             finalColor = finalColor.add(contribution);
         }
 
-        return finalColor.add(ctx.ambient);
+        // Add ambient lighting term from context
+        return finalColor.add(ctx.ambient());
     }
 
-    public float distributionGGX(float nh, float roughness){
+    /**
+     * GGX / Trowbridge-Reitz normal distribution function.
+     *
+     * @param nh       Cosine of angle between normal and half-vector.
+     * @param roughness Surface roughness.
+     * @return Distribution term D.
+     */
+    public float distributionGGX(float nh, float roughness) {
         float r2 = roughness * roughness;
-        float nh2 = nh * nh;
-
-        float denominator = (nh2 * (r2 - 1.0f) + 1.0f);
-        denominator = ((float) Math.PI) * denominator * denominator;
-
-        return r2 / denominator;
+        float denom = (nh * nh) * (r2 - 1f) + 1f;
+        denom = (float) Math.PI * denom * denom;
+        return r2 / denom;
     }
 
-    public float calculateFresnel(Vec3 viewDir, Vec3 normal, float IorFrom, float IorTo){
-        float cosW1 = -viewDir.dot(normal);
-        cosW1 = Math.min(1.0f, Math.max(-1.0f, cosW1));
+    /**
+     * Calculates Fresnel reflectance using exact equations for dielectric interface.
+     *
+     * @param viewDir Incident view direction (normalized).
+     * @param normal  Surface normal (oriented towards incident medium).
+     * @param IorFrom Index of refraction of incident medium.
+     * @param IorTo   Index of refraction of transmitted medium.
+     * @return Fresnel reflectance coefficient between 0 and 1.
+     */
+    public float calculateFresnel(Vec3 viewDir, Vec3 normal, float IorFrom, float IorTo) {
+        float cosThetaI = -viewDir.dot(normal);
+        cosThetaI = Math.min(1f, Math.max(-1f, cosThetaI));
 
-        float i = IorFrom/IorTo;
+        float eta = IorFrom / IorTo;
+        float sinThetaTSq = eta * eta * (1f - cosThetaI * cosThetaI);
 
-        float radical = 1.0f - (i * i *(1 - cosW1 * cosW1));
-
-        if (radical < 0f) {
-            return 1.0f;    //total inner reflection
+        if (sinThetaTSq > 1f) {
+            return 1f;  // Total internal reflection
         }
 
-        float cosW2 = (float) Math.sqrt(radical);
+        float cosThetaT = (float) Math.sqrt(1f - sinThetaTSq);
 
-        float FsNum = IorFrom * cosW1 - IorTo * cosW2;
-        float FsDen = IorFrom * cosW1 + IorTo * cosW2;
-        float Fs = (FsNum / FsDen) * (FsNum / FsDen);
+        float Rs = ((IorFrom * cosThetaI) - (IorTo * cosThetaT)) / ((IorFrom * cosThetaI) + (IorTo * cosThetaT));
+        Rs *= Rs;
 
-        float FpNum = IorTo * cosW1 - IorFrom * cosW2;
-        float FpDen = IorTo * cosW1 + IorFrom * cosW2;
-        float Fp = (FpNum / FpDen) * (FpNum/ FpDen);
+        float Rp = ((IorTo * cosThetaI) - (IorFrom * cosThetaT)) / ((IorTo * cosThetaI) + (IorFrom * cosThetaT));
+        Rp *= Rp;
 
-        return (Fs + Fp) / 2.0f;
+        return (Rs + Rp) * 0.5f;
     }
 
-    private Vec3 fresnelSchlick(float cosTheta, Material material) {
-        Vec3 F0 = material.getF0();
-        float factor = (float) Math.pow(Math.max(0.0, Math.min(1.0, 1.0 - cosTheta)), 5.0);
-        return F0.add(((new Vec3(1).subtract(F0)).multiply(factor)));
-    }
-
+    /**
+     * Smith geometry term for microfacet shadowing-masking.
+     *
+     * @param nv        Cosine of angle between normal and view direction.
+     * @param nl        Cosine of angle between normal and light direction.
+     * @param roughness Surface roughness.
+     * @return Geometry attenuation factor.
+     */
     float geometrySmith(float nv, float nl, float roughness) {
-        float ggx1 = geometrySchlickGGX(nv, roughness);
-        float ggx2 = geometrySchlickGGX(nl, roughness);
-
-        return ggx1 * ggx2;
+        return geometrySchlickGGX(nv, roughness) * geometrySchlickGGX(nl, roughness);
     }
 
-    float geometrySchlickGGX(float nv, float roughness) {
-        float k = roughness/2.0f;
-        float denominator = nv * (1.0f - k) + k;
-
-        return nv/ denominator;
+    /**
+     * Schlick-GGX geometry attenuation term for a single direction.
+     *
+     * @param nDotV     Cosine between normal and vector (view or light).
+     * @param roughness Surface roughness.
+     * @return Geometry term for one direction.
+     */
+    float geometrySchlickGGX(float nDotV, float roughness) {
+        float k = (roughness * roughness) / 2f;
+        return nDotV / (nDotV * (1f - k) + k);
     }
+
 }

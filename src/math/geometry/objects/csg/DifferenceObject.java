@@ -24,7 +24,7 @@ public class DifferenceObject extends CSGObject {
 
     @Override
     protected Vec3 getAdjustedNormal(Intersection inter, SceneObject obj) {
-        return (obj == objB) ? inter.getNormal().multiply(-1f) : inter.getNormal();
+        return (obj == objB) ? inter.normal().multiply(-1f) : inter.normal();
     }
 
     @Override
