@@ -8,15 +8,15 @@ public class SpotLight extends Light {
     private Vec3 direction;
     private float angle, exponent;
 
-    public SpotLight(Vec3 p, float intensity, Color color, Vec3 direction, float angle, float exponent) {
-        super(p, intensity, color);
+    public SpotLight(Vec3 p, float intensity, float r, Color color, Vec3 direction, float angle, float exponent) {
+        super(p, intensity, r, color);
         this.direction = direction.normalize();
         this.angle = angle;
         this.exponent = exponent;
     }
 
     public SpotLight copyWithIntensity(float newIntensity) {
-        return new SpotLight(this.getP(), newIntensity, this.getColor(), this.getDirection(), this.getAngle(), this.getExponent());
+        return new SpotLight(this.getP(), newIntensity, this.getR(), this.getColor(), this.direction, this.angle, this.exponent);
     }
 
     public float getAttenuation(Vec3 point) {
