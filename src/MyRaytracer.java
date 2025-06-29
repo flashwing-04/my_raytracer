@@ -92,6 +92,7 @@ public class MyRaytracer {
 
                     Color color = adaptiveSample(camera, pixelTopLeft, stepRight, stepUp, 0, objects, lights, initialIorStack);
                     pixels[row * RES_X + x] = color.toHex();
+                    //System.out.println('p');
                 }
                 synchronized (imageSource) {
                     imageSource.newPixels();
@@ -510,8 +511,8 @@ public class MyRaytracer {
         SceneObject cylZ = new Quadrik(new float[]{1, 0, 1, 0, 0, 0, 0, 0, 0, -0.2f}, green);
 
         SceneObject csgShape = new DifferenceObject(new DifferenceObject(new DifferenceObject(new IntersectionObject(baseSphere, cube, redish), cylX, redish), cylY, redish), cylZ, green).transform(transform);
-
         SceneObject greenSphere = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, glass).transform(transform);
+
 
         SceneObject greenSphereI = new Quadrik(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.15f}, glass);
 
@@ -522,6 +523,7 @@ public class MyRaytracer {
 
         SceneObject d2 = new DifferenceObject(greenSphere2, greenSphere2I, glass).transform(new Mat4().translate(-0.5f,-0.5f,-2));;
         objects.add(d2);
+
         objects.add(csgShape);
         objects.add(greenSphere);
 
@@ -559,7 +561,6 @@ public class MyRaytracer {
         Vec3 outsidePoint = new Vec3(500, 500, 500);
 
         SceneObject torus = new Torus(2, 1, redish).transform(new Mat4().translate(0,0,-3f));
-
         SceneObject test = new IntersectionObject(superE2, superE, redish);
         //SceneObject specialQ = new QuarticSurface(-2, 1.5f, redish).transform(transform);
         //SceneObject d = new DifferenceObject(greenSphere, innerSphere, redish);
