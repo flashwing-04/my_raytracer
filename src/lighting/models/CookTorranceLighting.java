@@ -37,7 +37,10 @@ public class CookTorranceLighting extends LightingModel {
         float nv = Math.max(normal.dot(view), 0f);
 
         // Fresnel reflectance at view angle
-        Vec3 F = new Vec3(calculateFresnel(view, refractionNormal, iorFrom, iorTo));
+        float fresnel = calculateFresnel(view, refractionNormal, iorFrom, iorTo);
+        //Vec3 F0 = material.getF0();
+        //Vec3 F = F0.add(Vec3.ONE.subtract(F0).multiply((float)Math.pow(1.0f - nv, 5.0)));
+        Vec3 F = Vec3.ONE.multiply(1.0f - metalness).add(albedo.multiply(metalness)).multiply(fresnel);
 
         for (Light light : ctx.lights()) {
             Vec3 lightDir = light.getP().subtract(point).normalize();

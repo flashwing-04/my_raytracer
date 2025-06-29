@@ -39,7 +39,7 @@ public class MyRaytracer {
 
     private static CubeMap skybox = null;
     private static final CookTorranceLighting cookTorranceLighting = new CookTorranceLighting();
-    private static final int PATH_TRACING_SAMPLES = 4;
+    private static final int PATH_TRACING_SAMPLES = 1;
     private static final int SOFT_SHADOW_SAMPLES = 1;
     private static final int MAX_SUPERSAMPLING_DEPTH = 0;
     private static final float COLOR_THRESHOLD = 0.02f;
@@ -55,7 +55,7 @@ public class MyRaytracer {
         setUpWindow();
 
         // Setup camera position and orientation
-        Vec3 cameraPos = new Vec3(0, 0, 0f);
+        Vec3 cameraPos = new Vec3(0, 0, 4f);
         Vec3 cameraV = new Vec3(0, 0, -1);
         Vec3 imgPlaneR = new Vec3(1, 0, 0);
         Camera camera = new Camera(cameraPos, cameraV, imgPlaneR, 2, 2, 1);
@@ -498,15 +498,15 @@ public class MyRaytracer {
         return objects;
     }
 
-    private static List<SceneObject> getCSG2() {
+    private static List<SceneObject> getCSG2() throws IOException {
         List<SceneObject> objects = new ArrayList<>();
 
         Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.5f, 0.01f, 0, 1f);
-        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.01f, 0.9f, 0f, 1.5f);
+        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.01f, 0.99f, 0f, 1.5f);
 
         objects.add(new Area(new Vec3(0, 1, 0), -1.5f, redish));
 
-        Mat4 transform = new Mat4().translate(0f, 0, -3);
+        Mat4 transform = new Mat4().rotateY(0.7f).translate(0f, 0, -3);
         //SceneObject cube = makeCube(redish).transform(transform);
 
         SceneObject greenSphere = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -1f}, redish)
@@ -519,8 +519,8 @@ public class MyRaytracer {
         //SceneObject innerSphere = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, air)
           //      .transform(new Mat4().translate(0f,0f,-3f));
 
-        SDFObject superE = new SuperEllipsoid(1, 1, 1, 1f, 1f, greenish).transform(new Mat4().translate(0,0f,-3f));
-        SDFObject superE2 = new SuperEllipsoid(1, 1, 1, 1, 1, greenish).transform(new Mat4().translate(0.4f,0f,-3f));
+        SDFObject superE = new SuperEllipsoid(1, 1, 1, 1f, 1f, greenish);
+        SDFObject superE2 = new SuperEllipsoid(1, 1, 1, 1, 1, greenish).transform(new Mat4().translate(1, 0, 0));
         float a1=1, a2=1, a3=1, e1 =1, e2 = 1;
         Mat4 translation = new Mat4().translate(0f, 0f, -3f);
         SuperEllipsoid ellipsoid = new SuperEllipsoid(a1, a2, a3, e1, e2, translation, greenish);
@@ -530,12 +530,17 @@ public class MyRaytracer {
 
         SceneObject torus = new Torus(2, 1, redish).transform(new Mat4().translate(0,0,-3f));
         SceneObject test = new IntersectionObject(superE2, superE, redish);
+
+        SceneObject testSmooth = new SmoothDifferenceObject(superE, superE2, greenish, 0.4f);
+
+        File f = new File("src/scene/environment/duck.obj");
+        SceneObject mesh = new MeshObject(f, redish).transform(transform);
         //SceneObject specialQ = new QuarticSurface(-2, 1.5f, redish).transform(transform);
         //SceneObject d = new DifferenceObject(greenSphere, innerSphere, redish);
         //objects.add(cube);
         //objects.add(greenSphere);
         //objects.add(d);
-        objects.add(test);
+        objects.add(mesh);
         //objects.add(greenSphere2);
         return objects;
     }
