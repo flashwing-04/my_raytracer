@@ -17,8 +17,6 @@ import lighting.models.*;
 import math.*;
 import math.geometry.*;
 import math.geometry.objects.*;
-import math.geometry.objects.csg.*;
-import math.geometry.objects.sdf.*;
 import scene.*;
 import stuff.*;
 import stuff.Color;
@@ -33,16 +31,20 @@ public class MyRaytracer {
     private static final int RES_Y = 1024;
     private static final int[] pixels = new int[RES_X * RES_Y];
 
-    private static final float EPSILON = 1e-4f;
+    private static final float EPSILON = 1e-3f;
 
     private static MemoryImageSource imageSource;
 
     private static CubeMap skybox = null;
     private static final CookTorranceLighting cookTorranceLighting = new CookTorranceLighting();
-    private static final int PATH_TRACING_SAMPLES = 1;
-    private static final int SOFT_SHADOW_SAMPLES = 1;
-    private static final int MAX_SUPERSAMPLING_DEPTH = 0;
-    private static final float COLOR_THRESHOLD = 0.02f;
+    private static final int DIFFUSE_REFLECTION_SAMPLES = 0;
+    private static final int GLOSSY_REFLECTION_SAMPLES = 1;
+
+    private static final int SOFT_SHADOW_SAMPLES =1;
+
+    private static final int MAX_SUPERSAMPLING_DEPTH = 3;
+    private static final int SUPERSAMPLING_SAMPLES_PER_SIDE = 1;
+    private static final float COLOR_THRESHOLD = 0.05f;
 
     /**
      * Entry point: Sets up window, loads scene, skybox, and renders the scene.
@@ -55,24 +57,17 @@ public class MyRaytracer {
         setUpWindow();
 
         // Setup camera position and orientation
-        Vec3 cameraPos = new Vec3(0, 0, 4f);
+        Vec3 cameraPos = new Vec3(0f, 0f, 0f);
         Vec3 cameraV = new Vec3(0, 0, -1);
         Vec3 imgPlaneR = new Vec3(1, 0, 0);
         Camera camera = new Camera(cameraPos, cameraV, imgPlaneR, 2, 2, 1);
 
-        // Load scene objects and lights
-        List<SceneObject> sceneObjects = getCSG2();
-        List<Light> lights = getLights();
+        // Load scene parts
+        List<SceneObject> sceneObjects = getCSG4(); // SceneBuilder.getObjects();
+        List<Light> lights =getLights();    // SceneBuilder.getLights();
+        skybox = SceneBuilder.getSkybox();
 
-        // Load skybox textures
-        BufferedImage posX = ImageIO.read(new File("src/scene/environment/posx.jpg"));
-        BufferedImage negX = ImageIO.read(new File("src/scene/environment/negx.jpg"));
-        BufferedImage posY = ImageIO.read(new File("src/scene/environment/posy.jpg"));
-        BufferedImage negY = ImageIO.read(new File("src/scene/environment/negy.jpg"));
-        BufferedImage posZ = ImageIO.read(new File("src/scene/environment/posz.jpg"));
-        BufferedImage negZ = ImageIO.read(new File("src/scene/environment/negz.jpg"));
-        skybox = new CubeMap(posX, negX, posY, negY, posZ, negZ);
-
+        System.out.println("Finished Setup");
         renderScene(camera, sceneObjects, lights);
 
         imageSource.newPixels();
@@ -96,25 +91,40 @@ public class MyRaytracer {
         ExecutorService executor = Executors.newFixedThreadPool(threads);
         long startTime = System.nanoTime();
 
-        for (int y = 0; y < RES_Y; ++y) {
-            final int row = y;
+        final int rowsPerTask = Math.max(1, RES_Y / (threads * 4));
+
+        for (int startRow = 0; startRow < RES_Y; startRow += rowsPerTask) {
+            final int rowStart = startRow;
+            final int rowEnd = Math.min(startRow + rowsPerTask, RES_Y);
+
             executor.submit(() -> {
-                for (int x = 0; x < RES_X; ++x) {
-                    Vec3 pixelTopLeft = pxStart.add(stepRight.multiply(x)).add(stepUp.multiply(row));
 
-                    // Prepare index of refraction stack for handling nested transparent objects
-                    Stack<Float> initialIorStack = getInitialIorStack(camera.getPosition(), objects);
+                Stack<Float> initialIorStack = getInitialIorStack(camera.getPosition(), objects);
 
-                    // Perform adaptive sampling to calculate pixel color
-                    Color color = adaptiveSample(camera, pixelTopLeft, stepRight, stepUp, 0, objects, lights, initialIorStack);
-                    pixels[row * RES_X + x] = color.toHex();
+                for (int row = rowStart; row < rowEnd; row++) {
+                    for (int x = 0; x < RES_X; ++x) {
+
+                        Vec3 pixelTopLeft = pxStart.add(stepRight.multiply(x)).add(stepUp.multiply(row));
+
+                        // Prepare index of refraction stack for handling nested transparent objects
+                        Stack<Float> pixelIorStack = new Stack<>();
+                        pixelIorStack.addAll(initialIorStack);
+
+                        // Perform adaptive sampling to calculate pixel color
+                        Color color = adaptiveSample(camera, pixelTopLeft, stepRight, stepUp, 0, objects, lights, pixelIorStack, 5);
+                        pixels[row * RES_X + x] = color.toHex();
+                    }
                 }
-                synchronized (imageSource) {
-                    imageSource.newPixels();
+
+                // Reduced synchronization frequency
+                if (rowStart % (rowsPerTask * 4) == 0) {
+                    synchronized (imageSource) {
+                        imageSource.newPixels();
+                    }
+                    long elapsedTime = System.nanoTime() - startTime;
+                    double seconds = elapsedTime / 1_000_000_000.0;
+                    System.out.printf("Rendered rows %d-%d - Time elapsed: %.2f seconds%n", rowStart, rowEnd - 1, seconds);
                 }
-                long elapsedTime = System.nanoTime() - startTime;
-                double seconds = elapsedTime / 1_000_000_000.0;
-                System.out.printf("Rendered row %d - Time elapsed: %.2f seconds%n", row, seconds);
             });
         }
 
@@ -128,58 +138,61 @@ public class MyRaytracer {
     }
 
     /**
-     * Performs adaptive supersampling on a pixel region by recursively subdividing
-     * the pixel area until color variation is below a threshold or maximum depth reached.
+     * Adaptives Supersampling N×N innerhalb eines Pixels mit einstellbarer Samples-Anzahl.
+     * Teilt das Pixel nur weiter auf, wenn der Farbunterschied zwischen Subsamples zu groß ist.
      *
-     * @param camera the camera
-     * @param topLeft top-left position of the pixel area in image plane space
-     * @param stepX horizontal pixel step vector
-     * @param stepY vertical pixel step vector
-     * @param depth current recursion depth
-     * @param objects list of scene objects
-     * @param lights list of lights
-     * @param iorStack current index of refraction stack
-     * @return sampled color for the pixel area
+     * @param camera        Kamera
+     * @param topLeft       Top-Left Position im Bildflächen-Raum für diesen Pixelbereich
+     * @param stepX         Schritt-Vector für Pixelbreite
+     * @param stepY         Schritt-Vector für Pixelhöhe
+     * @param depth         aktuelle Rekursionstiefe der Supersampling-Unterteilung
+     * @param objects       Szene-Objekte
+     * @param lights        Lichter
+     * @param iorStack      IOR Stack für Brechung
+     * @param rayTraceDepth maximale Ray-Recursionstiefe für Trace-Aufrufe
+     * @return Farbwert des Pixels
      */
-    private static Color adaptiveSample(Camera camera, Vec3 topLeft, Vec3 stepX, Vec3 stepY, int depth,
-                                        List<SceneObject> objects, List<Light> lights, Stack<Float> iorStack) {
-        Vec3[] positions = new Vec3[4];
-        positions[0] = topLeft;
-        positions[1] = topLeft.add(stepX);
-        positions[2] = topLeft.add(stepX).add(stepY);
-        positions[3] = topLeft.add(stepY);
+    private static Color adaptiveSample(Camera camera, Vec3 topLeft, Vec3 stepX, Vec3 stepY, int depth, List<SceneObject> objects, List<Light> lights, Stack<Float> iorStack, int rayTraceDepth) {
+        int totalSamples = SUPERSAMPLING_SAMPLES_PER_SIDE * SUPERSAMPLING_SAMPLES_PER_SIDE;
+        Color[] colors = new Color[totalSamples];
+        Vec3 cameraPos = camera.getPosition();
 
-        Color[] colors = new Color[4];
-        for (int i = 0; i < 4; i++) {
-            Ray ray = new Ray(camera.getPosition(), positions[i].subtract(camera.getPosition()));
-            Stack<Float> stackCopy = new Stack<>();
-            stackCopy.addAll(iorStack);
-            colors[i] = traceRay(ray, objects, lights, camera, stackCopy, 7);
+        int idx = 0;
+        for (int y = 0; y < SUPERSAMPLING_SAMPLES_PER_SIDE; y++) {
+            for (int x = 0; x < SUPERSAMPLING_SAMPLES_PER_SIDE; x++) {
+                float fx = (x + 0.5f) / SUPERSAMPLING_SAMPLES_PER_SIDE;
+                float fy = (y + 0.5f) / SUPERSAMPLING_SAMPLES_PER_SIDE;
+                Vec3 samplePos = topLeft.add(stepX.multiply(fx)).add(stepY.multiply(fy));
+                Ray ray = new Ray(cameraPos, samplePos.subtract(cameraPos));
+                Stack<Float> localIorStack = new Stack<>();
+                localIorStack.addAll(iorStack);
+                colors[idx++] = traceRay(ray, objects, lights, camera, localIorStack, rayTraceDepth);
+            }
         }
 
         boolean similar = true;
-        for (int i = 0; i < 4 && similar; i++) {
-            for (int j = i + 1; j < 4 && similar; j++) {
+        outer:
+        for (int i = 0; i < totalSamples && similar; i++) {
+            for (int j = i + 1; j < totalSamples; j++) {
                 if (!colors[i].similar(colors[j], COLOR_THRESHOLD)) {
                     similar = false;
+                    break outer;
                 }
             }
         }
 
         if (similar || depth >= MAX_SUPERSAMPLING_DEPTH) {
-            Vec3 finalColor = Vec3.ZERO;
-            for (Color c : colors) {
-                finalColor = finalColor.add(c.getVector());
-            }
-            return new Color(finalColor.divide(4f));
+            Vec3 avg = Vec3.ZERO;
+            for (Color c : colors) avg = avg.add(c.getVector());
+            return new Color(avg.divide(totalSamples));
         } else {
             Vec3 halfX = stepX.multiply(0.5f);
             Vec3 halfY = stepY.multiply(0.5f);
 
-            Color c1 = adaptiveSample(camera, topLeft, halfX, halfY, depth + 1, objects, lights, iorStack);
-            Color c2 = adaptiveSample(camera, topLeft.add(halfX), halfX, halfY, depth + 1, objects, lights, iorStack);
-            Color c3 = adaptiveSample(camera, topLeft.add(halfX).add(halfY), halfX, halfY, depth + 1, objects, lights, iorStack);
-            Color c4 = adaptiveSample(camera, topLeft.add(halfY), halfX, halfY, depth + 1, objects, lights, iorStack);
+            Color c1 = adaptiveSample(camera,              topLeft,         halfX, halfY, depth + 1, objects, lights, iorStack, rayTraceDepth);
+            Color c2 = adaptiveSample(camera, topLeft.add(halfX),            halfX, halfY, depth + 1, objects, lights, iorStack, rayTraceDepth);
+            Color c3 = adaptiveSample(camera, topLeft.add(halfX).add(halfY), halfX, halfY, depth + 1, objects, lights, iorStack, rayTraceDepth);
+            Color c4 = adaptiveSample(camera, topLeft.add(halfY),            halfX, halfY, depth + 1, objects, lights, iorStack, rayTraceDepth);
 
             Vec3 avg = c1.getVector().add(c2.getVector()).add(c3.getVector()).add(c4.getVector()).divide(4f);
             return new Color(avg);
@@ -204,7 +217,6 @@ public class MyRaytracer {
         Intersection nearestIntersection = ray.getNearestIntersection(objects);
         if (nearestIntersection == null) return Color.BLACK;
 
-
         SceneObject hitObject = nearestIntersection.object();
         Material material = nearestIntersection.material();
         Vec3 hitPoint = ray.p().add(ray.v().multiply(nearestIntersection.distance()));
@@ -213,15 +225,24 @@ public class MyRaytracer {
         Vec3 viewDir = ray.v().normalize();
 
         float currentIOR = iorStack.isEmpty() ? 1.0f : iorStack.peek();
+        float materialRoughness = material.getRoughness();
+        float materialTransmission = material.getTransmission();
+        Vec3 materialAlbedo = material.getAlbedo().getVector();
 
+        // Compute soft shadows with optimized light filtering
         List<Light> relevantLights = computeSoftShadows(nearestIntersection, lights, objects);
         LightingContext context = new LightingContext(relevantLights, hitObject, nearestIntersection, camera, Vec3.ZERO, currentIOR);
         Color localColor = cookTorranceLighting.getFinalColor(context);
 
         // INDIRECT LIGHTING (with Path Tracing) - diffuse reflection
         Vec3 indirect = Vec3.ZERO;
-        if (PATH_TRACING_SAMPLES > 0) {
-            for (int i = 0; i < PATH_TRACING_SAMPLES; i++) {
+        if (DIFFUSE_REFLECTION_SAMPLES > 0) {
+            // Pre-allocate variables outside loop
+            Vec3 bounceRadiance = Vec3.ZERO;
+            Vec3 materialContribution = Vec3.ZERO;
+            Vec3 brdf = materialAlbedo.divide((float) Math.PI);
+
+            for (int i = 0; i < DIFFUSE_REFLECTION_SAMPLES; i++) {
                 Vec3 sampleDir = normal.randomHemisphereDirection();
                 float pdf = pdfCosine(normal, sampleDir);
                 if (pdf <= 0) continue;
@@ -230,11 +251,11 @@ public class MyRaytracer {
                 Stack<Float> bounceIorStack = new Stack<>();
                 bounceIorStack.addAll(iorStack);
                 Color bounceColor = traceRay(bounceRay, objects, lights, camera, bounceIorStack, depth - 1);
-                Vec3 bounceRadiance = bounceColor.getVector();
+                bounceRadiance = bounceColor.getVector();
 
                 Intersection bounceIntersection = bounceRay.getNearestIntersection(objects);
                 float bounceRoughness = 1.0f;
-                Vec3 materialContribution = Vec3.ZERO;
+                materialContribution = Vec3.ZERO;
 
                 if (bounceIntersection != null) {
                     Material bounceMaterial = bounceIntersection.object().getMaterial();
@@ -243,28 +264,26 @@ public class MyRaytracer {
                 }
 
                 bounceRadiance = bounceRadiance.add(materialContribution).multiply(bounceRoughness);
-
-                Vec3 brdf = material.getAlbedo().getVector().divide((float) Math.PI);
                 float cosTheta = Math.max(0.0f, normal.dot(sampleDir));
 
                 Vec3 contribution = bounceRadiance.multiply(brdf).multiply(cosTheta / pdf);
                 indirect = indirect.add(contribution);
             }
-            indirect = indirect.divide(PATH_TRACING_SAMPLES);
+            indirect = indirect.divide(DIFFUSE_REFLECTION_SAMPLES);
         }
         Color totalLocalColor = new Color(localColor.getVector().add(indirect));
 
         // REFLECTION (with Path Tracing) - glossy reflection
         Color reflectedColor = Color.BLACK;
-        if (PATH_TRACING_SAMPLES > 0) {
-            int reflectionSamples = (material.getRoughness() < 0.05f) ? 1 : PATH_TRACING_SAMPLES;
+        if (GLOSSY_REFLECTION_SAMPLES > 0) {
+            int reflectionSamples = (materialRoughness < 0.05f) ? 1 : GLOSSY_REFLECTION_SAMPLES;
             Vec3 reflectionDir = viewDir.reflect(normal);
             Vec3 glossySum = Vec3.ZERO;
 
             for (int i = 0; i < reflectionSamples; i++) {
-                Vec3 sampledDir = (material.getRoughness() < 0.05f)
+                Vec3 sampledDir = (materialRoughness < 0.05f)
                         ? reflectionDir
-                        : reflectionDir.sampleGlossyDirection(normal, material.getRoughness());
+                        : reflectionDir.sampleGlossyDirection(normal, materialRoughness);
 
                 Ray glossyRay = new Ray(hitPoint.add(normal.multiply(EPSILON)), sampledDir);
                 Stack<Float> glossyIorStack = new Stack<>();
@@ -290,7 +309,7 @@ public class MyRaytracer {
             reflectedColor = new Color(glossySum);
         }
 
-        // REFRACTION
+        // REFRACTION - optimized IOR stack management
         boolean entering = -viewDir.dot(normal) > 0;
 
         float iorFrom, iorTo;
@@ -315,7 +334,7 @@ public class MyRaytracer {
         Color refractedColor = Color.BLACK;
 
         if (refractionDir != null) {
-            Vec3 offset = entering ? normal.multiply(-EPSILON) : normal.multiply(EPSILON);
+            Vec3 offset = entering ? normal.multiply(-0.1f*EPSILON) : normal.multiply(EPSILON);
             Ray refractedRay = new Ray(nearestIntersection.point().add(offset), refractionDir);
             refractedColor = traceRay(refractedRay, objects, lights, camera, newIorStack, depth - 1);
         }
@@ -323,7 +342,7 @@ public class MyRaytracer {
         float fresnel = cookTorranceLighting.calculateFresnel(viewDir, refractionNormal, iorFrom, iorTo);
 
         float reflectionWeight = fresnel;
-        float transmissionWeight = (1.0f - fresnel) * material.getTransmission();
+        float transmissionWeight = (1.0f - fresnel) * materialTransmission;
 
         float totalWeight = reflectionWeight + transmissionWeight;
         if (totalWeight > 1.0f) {
@@ -356,15 +375,11 @@ public class MyRaytracer {
      */
     private static Stack<Float> getInitialIorStack(Vec3 cameraPos, List<SceneObject> objects) {
         Stack<Float> iorStack = new Stack<>();
-        List<SceneObject> containingObjects = new ArrayList<>();
 
         for (SceneObject obj : objects) {
             if (obj.isInside(cameraPos)) {
-                containingObjects.add(obj);
+                iorStack.push(obj.getMaterial().getIor());
             }
-        }
-        for (SceneObject obj : containingObjects) {
-            iorStack.push(obj.getMaterial().getIor());
         }
         return iorStack;
     }
@@ -372,35 +387,45 @@ public class MyRaytracer {
     private static List<Light> computeSoftShadows(Intersection hit, List<Light> lights, List<SceneObject> objects) {
         List<Light> relevantLights = new ArrayList<>();
         Vec3 point = hit.point();
+        Vec3 shadowOrigin = point.add(hit.normal().multiply(EPSILON));
 
         for (Light light : lights) {
             float shadowCount = 0;
+            boolean hasAnyLight = false;
+
+            if (light instanceof SpotLight spot && spot.getAttenuation(point) <= 0) {
+                continue;
+            }
 
             for (int i = 0; i < SOFT_SHADOW_SAMPLES; i++) {
                 Vec3 samplePos = light.jitterLightPosition();
+
                 Vec3 toLight = samplePos.subtract(point);
                 float distance = toLight.getLength();
 
-                Ray shadowRay = new Ray(point.add(toLight.normalize().multiply(EPSILON)), toLight);
+                Ray shadowRay = new Ray(shadowOrigin, toLight);
                 float transmission = 1.0f;
 
                 for (SceneObject obj : objects) {
-                    float t = obj.getMaterial().getTransmission();
                     if (obj.isOccluding(shadowRay, distance)) {
-                        transmission *= t;
+                        transmission *= obj.getMaterial().getTransmission();
+                        if (transmission <= 0.001f) {
+                            break;
+                        }
                     }
                 }
 
-                if (light instanceof SpotLight spot && spot.getAttenuation(point) <= 0) {
-                    transmission = 0;
-                }
-
                 shadowCount += transmission;
+                if (transmission > 0) {
+                    hasAnyLight = true;
+                }
             }
 
-            float factor = (shadowCount)/ SOFT_SHADOW_SAMPLES;
-            if (factor > 0) {
-                relevantLights.add(light.copyWithIntensity(light.getIntensity() * factor));
+            if (hasAnyLight) {
+                float factor = shadowCount / SOFT_SHADOW_SAMPLES;
+                if (factor > 0.001f) {
+                    relevantLights.add(light.copyWithIntensity(light.getIntensity() * factor));
+                }
             }
         }
 
@@ -444,173 +469,28 @@ public class MyRaytracer {
 
     private static List<Light> getLights() {
         return Arrays.asList(
-                new SpotLight(new Vec3(0, 0, 3), 1f, 0, Color.WHITE, new Vec3(0, 0, -1), (float) Math.toRadians(15), 1f),
-                new Light(new Vec3(1, 1, 2), 1f, 0,  Color.WHITE)
-
-
-                //new Light(new Vec3(1.2f, -0.5f, -2.5f), 1f, Color.WHITE)
+                new Light(new Vec3(1f, 2f, 0f), 1f, 0f, Color.WHITE),
+                new Light(new Vec3(0f, 0f, 0f), 1f, 0f, Color.WHITE)
         );
     }
 
-    private static List<Light> getLights2() {
-        return Arrays.asList(
-                new Light(new Vec3(1.2f, 0.2f, -3f), 1f, 0,  Color.WHITE), // main light, above and to the side
-                new Light(new Vec3(0.01f, 0, 0), 1f, 0, Color.WHITE) // main light, above and to the side
-
-                //new Light(new Vec3(0, 1, 2), 1f, Color.WHITE)
-        );
-    }
-
-    private static List<SceneObject> getCSG() {
-        List<SceneObject> objects = new ArrayList<>();
-
-        Material green = new Material(new Color(0.2f, 0.5f, 0.3f), 0.5f, 0.01f, 0.0f, 1f);
-        Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.9f, 0.01f, 0, 1f);
-        Material glass = new Material(new Color(0.23f, 0.71f, 0.35f), 0.01f, 0.01f, 1f, 1.5f);
-        Material air = new Material(new Color(1f, 1f, 1f), 0.01f, 0.01f, 1f, 1f);
-
-        objects.add(new Area(new Vec3(0, 1, 0), -1f, redish));
-
-        Mat4 transform = new Mat4().rotateY(0.5f).translate(0, 0, -3);
-        SceneObject baseSphere = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.6f}, green);
-        SceneObject cube = makeCube(redish);
-        SceneObject cylX = new Quadric(new float[]{1, 1, 0, 0, 0, 0, 0, 0, 0, -0.2f}, green);
-        SceneObject cylY = new Quadric(new float[]{0, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, green);
-        SceneObject cylZ = new Quadric(new float[]{1, 0, 1, 0, 0, 0, 0, 0, 0, -0.2f}, green);
-
-        SceneObject csgShape = new DifferenceObject(new DifferenceObject(new DifferenceObject(new IntersectionObject(baseSphere, cube, redish), cylX, redish), cylY, redish), cylZ, green).transform(transform);
-        SceneObject greenSphere = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, glass).transform(transform);
-
-
-        SceneObject greenSphereI = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.15f}, glass);
-
-        SceneObject d = new DifferenceObject(greenSphere, greenSphereI, glass).transform(transform);
-
-        SceneObject greenSphere2 = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.2f}, glass);
-        SceneObject greenSphere2I = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, glass);
-
-        SceneObject d2 = new DifferenceObject(greenSphere2, greenSphere2I, glass).transform(new Mat4().translate(-0.5f,-0.5f,-2));;
-        objects.add(d2);
-
-        objects.add(csgShape);
-        objects.add(greenSphere);
-
-        return objects;
-    }
-
-    private static List<SceneObject> getCSG2() throws IOException {
-        List<SceneObject> objects = new ArrayList<>();
-
-        Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.5f, 0.01f, 0, 1f);
-        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.01f, 0.99f, 0f, 1.5f);
-
-        objects.add(new Area(new Vec3(0, 1, 0), -1.5f, redish));
-
-        Mat4 transform = new Mat4().rotateY(0.7f).translate(0f, 0, -3);
-        //SceneObject cube = makeCube(redish).transform(transform);
-
-        SceneObject greenSphere = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -1f}, redish)
-                .transform(transform);
-        SceneObject greenSphere2 = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -1f}, redish).transform(new Mat4().translate(1f,0f,-3f));
-
-        //SceneObject greenSphere = new Sphere(new Vec3(0,0,-3), 1f, redish);;
-        Material air = new Material(new Color(1f, 1f, 1f), 0.01f, 0.01f, 1, 1f);
-
-        //SceneObject innerSphere = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, air)
-          //      .transform(new Mat4().translate(0f,0f,-3f));
-
-        SDFObject superE = new SuperEllipsoid(1, 1, 1, 1f, 1f, greenish);
-        SDFObject superE2 = new SuperEllipsoid(1, 1, 1, 1, 1, greenish).transform(new Mat4().translate(1, 0, 0));
-        float a1=1, a2=1, a3=1, e1 =1, e2 = 1;
-        Mat4 translation = new Mat4().translate(0f, 0f, -3f);
-        SuperEllipsoid ellipsoid = new SuperEllipsoid(a1, a2, a3, e1, e2, translation, greenish);
-
-        Vec3 insidePoint = new Vec3(0, 0, -3);
-        Vec3 outsidePoint = new Vec3(500, 500, 500);
-
-        SceneObject torus = new Torus(2, 1, redish).transform(new Mat4().translate(0,0,-3f));
-        SceneObject test = new IntersectionObject(superE2, superE, redish);
-
-        SceneObject testSmooth = new SmoothDifferenceObject(superE, superE2, greenish, 0.4f);
-
-        File f = new File("src/scene/environment/duck.obj");
-        SceneObject mesh = new MeshObject(f, redish).transform(transform);
-        //SceneObject specialQ = new QuarticSurface(-2, 1.5f, redish).transform(transform);
-        //SceneObject d = new DifferenceObject(greenSphere, innerSphere, redish);
-        //objects.add(cube);
-        //objects.add(greenSphere);
-        //objects.add(d);
-        objects.add(mesh);
-        //objects.add(greenSphere2);
-        return objects;
-    }
-
-    private static List<SceneObject> getCSG3() {
-        List<SceneObject> objects = new ArrayList<>();
-
-        Material redish = new Material(new Color(0.5f, 0.2f, 0.3f), 0.9f, 0.01f, 0, 1f);
-        Material greenish = new Material(new Color(0.23f, 0.71f, 0.35f), 0.95f, 0.01f, 0f, 1f);
-
-        objects.add(new Area(new Vec3(0, 1, 0), -1, redish));
-
-        Mat4 transform = new Mat4().rotateY(0.5f).translate(1f, 0, -7);
-        //SceneObject cube = makeCube(redish).transform(transform);
-
-        SceneObject greenSphere = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -1f}, greenish)
-                .transform(new Mat4().translate(0f,0.15f,-3f));
-
-        Material air = new Material(new Color(1f, 1f, 1f), 0.01f, 0.01f, 1, 1f);
-
-        //SceneObject innerSphere = new Quadric(new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.19f}, air)
-        //        .transform(new Mat4().translate(0f,0f,-3f));
-
-        //SceneObject d = new DifferenceObject(greenSphere, innerSphere, greenish);
-        //objects.add(cube);
-        objects.add(greenSphere);
-        //objects.add(d);
-
-        return objects;
-    }
-
-    private static List<SceneObject> getCSG4() {
+    private static List<SceneObject> getCSG4() throws IOException {
         List<SceneObject> objects = new ArrayList<>();
 
         // Materials: high roughness for strong diffuse reflection
-        Material redDiffuse = new Material(new Color(0.8f, 0.2f, 0.2f), 0.9f, 0.01f, 0f, 1f); // diffuse red
-        Material whiteDiffuse = new Material(new Color(0.2f, 0.2f, 0.2f), 0.01f, 0.01f, 0f, 1.5f); // diffuse white
+        Material redDiffuse = new Material(new Color(0.8f, 0.2f, 0.2f), 0.8f, 0.04f, 0f, 1f);
+        Material floorDiffuse = new Material(new Color(1f, 1f, 1f), 0.03f, 0.02f, 0f, 1.5f);
 
         // Ground plane (white)
-        objects.add(new Area(new Vec3(0, 1, 0), -1, whiteDiffuse));
+        objects.add(new Area(new Vec3(0, 1, 0), -1, floorDiffuse));
 
         // Red sphere above the ground
         SceneObject redSphere = new Quadric(
-                new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -1f}, // unit sphere
+                new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -1f},
                 redDiffuse
-        ).transform(new Mat4().translate(0f, 0f, -3f));
+        ).transform(new Mat4().translate(0f, 0f, -2f));
         objects.add(redSphere);
 
-        // Optionally, add a green diffuse sphere for color bleeding
-        Material greenDiffuse = new Material(new Color(0.2f, 0.8f, 0.3f), 0.99f, 0.01f, 0f, 1.5f);
-        SceneObject greenSphere = new Quadric(
-                new float[]{1, 1, 1, 0, 0, 0, 0, 0, 0, -0.5f},
-                whiteDiffuse
-        ).transform(new Mat4().translate(2f, 0f, -3f));
-        objects.add(greenSphere);
-
         return objects;
-    }
-
-
-    private static SceneObject makeCube(Material material) {
-        List<SceneObject> faces = Arrays.asList(
-                new Quadric(new float[]{0, 0, 0, 0, 0, 0, -1, 0, 0, -1}, material),
-                new Quadric(new float[]{0, 0, 0, 0, 0, 0, 1, 0, 0, -1}, material),
-                new Quadric(new float[]{0, 0, 0, 0, 0, 0, 0, -1, 0, -1}, material),
-                new Quadric(new float[]{0, 0, 0, 0, 0, 0, 0, 1, 0, -1}, material),
-                new Quadric(new float[]{0, 0, 0, 0, 0, 0, 0, 0, -1, -1}, material),
-                new Quadric(new float[]{0, 0, 0, 0, 0, 0, 0, 0, 1, -1}, material)
-        );
-
-        return faces.stream().reduce((a, b) -> new IntersectionObject(a, b, material)).orElseThrow();
     }
 }

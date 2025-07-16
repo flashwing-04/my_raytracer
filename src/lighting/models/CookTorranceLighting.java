@@ -38,9 +38,8 @@ public class CookTorranceLighting extends LightingModel {
 
         // Fresnel reflectance at view angle
         float fresnel = calculateFresnel(view, refractionNormal, iorFrom, iorTo);
-        //Vec3 F0 = material.getF0();
-        //Vec3 F = F0.add(Vec3.ONE.subtract(F0).multiply((float)Math.pow(1.0f - nv, 5.0)));
-        Vec3 F = Vec3.ONE.multiply(1.0f - metalness).add(albedo.multiply(metalness)).multiply(fresnel);
+        Vec3 F0 = material.getF0();
+        Vec3 F = F0.multiply(fresnel);
 
         for (Light light : ctx.lights()) {
             Vec3 lightDir = light.getP().subtract(point).normalize();
@@ -56,8 +55,10 @@ public class CookTorranceLighting extends LightingModel {
 
             Vec3 specular = F.multiply(D * G / denom);
 
-            // Diffuse component scaled by non-metal portion
-            Vec3 diffuse = Vec3.ONE.subtract(specular).multiply(1f - metalness);
+            Vec3 kS = F; // Specular reflection coefficient
+            Vec3 kD = Vec3.ONE.subtract(kS).multiply(1f - metalness); // Diffuse reflection coefficient
+
+            Vec3 diffuse = kD.multiply(albedo).divide((float)Math.PI);
 
             float attenuation = 1f;
             if (light instanceof SpotLight spot) {
@@ -67,7 +68,7 @@ public class CookTorranceLighting extends LightingModel {
 
             Vec3 radiance = light.getColor().getVector().multiply(light.getIntensity() * nl * attenuation);
 
-            Vec3 contribution = radiance.multiply(diffuse.multiply(albedo).add(specular));
+            Vec3 contribution = radiance.multiply(diffuse.add(specular));
             finalColor = finalColor.add(contribution);
         }
 

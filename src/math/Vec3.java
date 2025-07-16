@@ -7,10 +7,14 @@ package math;
  */
 public class Vec3 {
 
-    /** Constant representing the zero vector (0, 0, 0). */
+    /**
+     * Constant representing the zero vector (0, 0, 0).
+     */
     public static final Vec3 ZERO = new Vec3(0f, 0f, 0f);
 
-    /** Constant representing the one vector (1, 1, 1). */
+    /**
+     * Constant representing the one vector (1, 1, 1).
+     */
     public static final Vec3 ONE = new Vec3(1f, 1f, 1f);
 
     private final float x;

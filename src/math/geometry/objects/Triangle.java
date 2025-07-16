@@ -22,6 +22,7 @@ public class Triangle extends SceneObject {
 
     private final Vec3 a, b, c;
     private final Vec3 normal;
+    private final Vec3 edge1, edge2;
 
     /**
      * Constructs a triangle with given vertices and material.
@@ -36,11 +37,13 @@ public class Triangle extends SceneObject {
         this.a = a;
         this.b = b;
         this.c = c;
-        this.normal = b.subtract(a).cross(c.subtract(a)).normalize();
+        this.edge1 = b.subtract(a);
+        this.edge2 = c.subtract(a);
+        this.normal = edge1.cross(edge2).normalize();
     }
 
     /**
-     * Performs ray-triangle intersection using the Möller–Trumbore algorithm.
+     * Performs ray-triangle intersection using the optimized Möller–Trumbore algorithm.
      *
      * @param ray The ray to test for intersection.
      * @return A list containing a single {@link Intersection} if hit,
@@ -48,26 +51,25 @@ public class Triangle extends SceneObject {
      */
     @Override
     public List<Intersection> intersect(Ray ray) {
-        Vec3 edge1 = b.subtract(a);
-        Vec3 edge2 = c.subtract(a);
-        Vec3 h = ray.v().cross(edge2);
-        float det = edge1.dot(h);
+        Vec3 pVec = ray.v().cross(edge2);
+        float det = edge1.dot(pVec);
 
         if (Math.abs(det) < 1e-6f) return Collections.emptyList(); // Ray parallel to triangle
 
         float invDet = 1f / det;
-        Vec3 s = ray.p().subtract(a);
-        float u = invDet * s.dot(h);
+        Vec3 tVec = ray.p().subtract(a);
+        float u = tVec.dot(pVec) * invDet;
         if (u < 0f || u > 1f) return Collections.emptyList();
 
-        Vec3 q = s.cross(edge1);
-        float v = invDet * ray.v().dot(q);
+        Vec3 qVec = tVec.cross(edge1);
+        float v = ray.v().dot(qVec) * invDet;
         if (v < 0f || (u + v) > 1f) return Collections.emptyList();
 
-        float t = invDet * edge2.dot(q);
-        if (t < 1e-4f) return Collections.emptyList(); // Intersection behind ray origin or too close
+        float t = edge2.dot(qVec) * invDet;
+        if (t < 1e-4f) return Collections.emptyList(); // Behind ray or too close
 
-        Intersection hit = new Intersection(ray.p().add(ray.v().multiply(t)), normal, t, this, getMaterial());
+        Vec3 hitPoint = ray.p().add(ray.v().multiply(t));
+        Intersection hit = new Intersection(hitPoint, normal, t, this, getMaterial());
         return List.of(hit);
     }
 
@@ -93,7 +95,7 @@ public class Triangle extends SceneObject {
      */
     @Override
     public boolean isInside(Vec3 point) {
-        return false; // Triangle is a surface, not a volume
+        return false;
     }
 
     /**
@@ -122,7 +124,10 @@ public class Triangle extends SceneObject {
      * @return {@code true} if the point is inside the triangle's boundaries, {@code false} otherwise.
      */
     public boolean contains(Vec3 p) {
-        Vec3 v0 = b.subtract(a), v1 = c.subtract(a), v2 = p.subtract(a);
+        Vec3 v0 = edge1;
+        Vec3 v1 = edge2;
+        Vec3 v2 = p.subtract(a);
+
         float d00 = v0.dot(v0);
         float d01 = v0.dot(v1);
         float d11 = v1.dot(v1);
